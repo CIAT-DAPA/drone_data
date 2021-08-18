@@ -9,7 +9,10 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.cluster import KMeans
 from utils import classification_functions as clf
+import pandas as pd
+import geopandas as gpd
 
+from utils import gis_functions as gf
 
 def filter_list(list1, list2):
     list_filtered = []
@@ -85,13 +88,13 @@ class DroneData:
         if expression is not None:
             vidata = eval(expression)
             if label is None:
-                label = 'vi'
+                label = vi
 
-        if vi == 'ndvi':
+        elif vi == 'ndvi':
             vidata = normalized_difference(nir, red, self.drone_data.attrs['nodata'])
             label = 'ndvi'
 
-        if vi == 'ndvire':
+        elif vi == 'ndvire':
             vidata = normalized_difference(nir, r_edge, self.drone_data.attrs['nodata'])
             label = 'ndvire'
 
@@ -137,6 +140,42 @@ class DroneData:
 
         self.drone_data = xarray.merge([self.drone_data, climg])
         self._clusters = clusters
+
+    def extract_usingpoints(self, points,
+                            bands=None, crs=None,
+                            long_direction=True):
+        """
+
+        :param points:
+        :param bands:
+        :param crs:
+        :param long_direction:
+        :return:
+        """
+
+        if bands is None:
+            bands = self.variable_names
+        if crs is None:
+            crs = self.drone_data.attrs['crs']
+
+        if type(points) == str:
+            coords = pd.read_csv(points)
+
+        elif type(points) == list:
+            if np.array(points).ndim == 1:
+                points = [points]
+
+            coords = pd.DataFrame(points)
+
+        geopoints = gpd.GeoDataFrame(coords,
+                                     geometry=gpd.points_from_xy(coords.iloc[:, 0],
+                                                                 coords.iloc[:, 1]),
+                                     crs=crs)
+
+        return gf.get_data_perpoints(self.drone_data.copy(),
+                                     geopoints,
+                                     bands,
+                                     long=long_direction)
 
     def tif_toxarray(self):
 
