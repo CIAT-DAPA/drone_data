@@ -5,6 +5,8 @@ import os
 import glob
 
 from utils import data_processing
+from utils.plt_functions import plot_multibands_fromxarray
+
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.cluster import KMeans
@@ -50,6 +52,20 @@ class DroneData:
     @property
     def variable_names(self):
         return list(self.drone_data.keys())
+
+
+    def _checkbandstoexport(self, bands):
+
+        if bands == 'all':
+            bands = self.variable_names
+
+        elif not isinstance(bands, list):
+            bands = [bands]
+
+        bands = [i for i in bands if i in self.variable_names]
+
+        return bands
+
 
     def add_layer(self, fn, variable_name):
         with rasterio.open(fn) as src:
@@ -177,19 +193,35 @@ class DroneData:
                                      bands,
                                      long=long_direction)
 
-    def tif_toxarray(self):
+    def tif_toxarray(self, multiband = False):
 
         riolist = []
-
+        imgindex = 1
         for band, path in zip(self._bands, self._files_path):
-            img = rasterio.open(path)
-            xrimg = xarray.DataArray(img.read(1))
+            
+
+            with rasterio.open(path) as src:
+                img = src.read(imgindex)
+                nodata = src.nodata
+                metadata = src.profile.copy()
+
+            if img.dtype == 'uint8':
+                img = img.astype(float)
+                metadata['dtype'] == 'float'
+                nodata= None
+
+            xrimg = xarray.DataArray(img)
             xrimg.name = band
             riolist.append(xrimg)
 
-        metadata = img.profile.copy()
+            if multiband:
+                imgindex += 1
+
+        
+
         # update nodata attribute
-        metadata['nodata'] = img.nodata
+        metadata['nodata'] = nodata
+        metadata['count'] = self._bands
 
         multi_xarray = xarray.merge(riolist)
         multi_xarray.attrs = metadata
@@ -199,27 +231,14 @@ class DroneData:
 
         multi_xarray = multi_xarray.assign_coords(x=tmpxr['x'].data)
         multi_xarray = multi_xarray.assign_coords(y=tmpxr['y'].data)
-
+        
         multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
 
         return multi_xarray
 
     def plot_multiplebands(self, bands, fig_sizex=12, fig_sizey=8):
+        return plot_multibands_fromxarray(self.drone_data, bands, fig_sizex, fig_sizey)
 
-        threebanddata = []
-        for i in bands:
-            banddata = self.drone_data[i].data
-            banddata[banddata == self.drone_data.attrs['nodata']] = np.nan
-            threebanddata.append(data_processing.scaleminmax(banddata))
-
-        threebanddata = np.dstack(tuple(threebanddata))
-
-        fig, ax = plt.subplots(figsize=(fig_sizex, fig_sizey))
-
-        ax.imshow(threebanddata)
-
-        ax.set_axis_off()
-        plt.show()
 
     def plot_singleband(self, band, height=12, width=8):
 
@@ -234,17 +253,6 @@ class DroneData:
         ax.set_axis_off()
         plt.show()
 
-    def _checkbandstoexport(self, bands):
-
-        if bands == 'all':
-            bands = self.variable_names
-
-        elif not isinstance(bands, list):
-            bands = [bands]
-
-        bands = [i for i in bands if i in self.variable_names]
-
-        return bands
 
     def multiband_totiff(self, filename, varnames='all'):
 
@@ -289,12 +297,32 @@ class DroneData:
 
         else:
             print('check the bands names that you want to export')
+    
+    def split_into_tiles(self, polygons = False, **kargs):
+        tilesdata = gf.split_xarray_data(self.drone_data, polygons = polygons, **kargs)
+        print("the image wass diveded into {} tiles".format(len(tilesdata)))
+        self.tiles_data = tilesdata
 
     def __init__(self,
                  inputpath,
-                 bands=['blue', 'green', 'red', 'nir']):
+                 bands=None,
+                 multiband_image = False,
+                 table = True):
+
+        if bands is None:
+                self._bands = ['red', 'green', 'blue']
+        else:
+            self._bands = bands
+
         self._clusters = np.nan
-        self._files_path = get_files_paths(inputpath, bands)
-        self._bands = bands
-        self.drone_data = self.tif_toxarray()
-        self._data, self._nanindex = self.data_astable()
+        if not multiband_image:
+            self._files_path = get_files_paths(inputpath, self._bands)
+            
+        else:
+            if inputpath.endswith('.tif'):
+                self._files_path = [inputpath for i in range(len(self._bands))]
+
+        self.drone_data = self.tif_toxarray(multiband_image)
+
+        if table:
+            self._data, self._nanindex = self.data_astable()

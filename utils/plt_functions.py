@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib
-
+from utils import data_processing
 import matplotlib.pyplot as plt
 
 
@@ -20,3 +20,21 @@ def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_wid
     fig.colorbar(im)
     ax.set_axis_off()
     plt.show()
+
+def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
+
+    threebanddata = []
+    for i in bands:
+        banddata = xarradata[i].data
+        banddata[banddata == xarradata.attrs['nodata']] = np.nan
+        threebanddata.append(data_processing.scaleminmax(banddata))
+
+    threebanddata = np.dstack(tuple(threebanddata))
+
+    fig, ax = plt.subplots(figsize=(fig_sizex, fig_sizey))
+
+    ax.imshow(threebanddata)
+
+    ax.set_axis_off()
+    plt.show()
+

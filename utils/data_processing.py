@@ -97,6 +97,16 @@ def get_nan_idsfromarray(nparray):
 
     return np.unique(ids)
 
+def from_xarray_2array(xrdata, bands):
+    data_list = []
+    for i in bands:
+        banddata = xrdata[i].data
+        banddata[banddata == xrdata.attrs['nodata']] = np.nan
+        data_list.append(banddata)
+
+    return np.array(data_list)
+
+
 
 def from_xarray_to_table(xrdata, nodataval=None,
                          remove_nan=True, features_names=None):
