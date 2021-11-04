@@ -16,6 +16,7 @@ import geopandas as gpd
 
 from utils import gis_functions as gf
 
+
 def filter_list(list1, list2):
     list_filtered = []
     for strlist2 in list2:
@@ -53,7 +54,6 @@ class DroneData:
     def variable_names(self):
         return list(self.drone_data.keys())
 
-
     def _checkbandstoexport(self, bands):
 
         if bands == 'all':
@@ -65,7 +65,6 @@ class DroneData:
         bands = [i for i in bands if i in self.variable_names]
 
         return bands
-
 
     def add_layer(self, fn, variable_name):
         with rasterio.open(fn) as src:
@@ -134,7 +133,6 @@ class DroneData:
 
         self.drone_data = xarray.merge([self.drone_data, img_clas])
 
-
     def clusters(self, nclusters=2, method="kmeans", p_sample=10, pcavariance=0.5):
         # preprocess data
         data = self._data
@@ -149,7 +147,6 @@ class DroneData:
         climg = data_processing.assign_valuestoimg((clusters['labels'] + 1),
                                                    self.drone_data.dims['y'],
                                                    self.drone_data.dims['x'], idsnan)
-
 
         climg = xarray.DataArray(climg)
         climg.name = 'clusters'
@@ -193,12 +190,11 @@ class DroneData:
                                      bands,
                                      long=long_direction)
 
-    def tif_toxarray(self, multiband = False):
+    def tif_toxarray(self, multiband=False):
 
         riolist = []
         imgindex = 1
         for band, path in zip(self._bands, self._files_path):
-            
 
             with rasterio.open(path) as src:
                 img = src.read(imgindex)
@@ -208,7 +204,7 @@ class DroneData:
             if img.dtype == 'uint8':
                 img = img.astype(float)
                 metadata['dtype'] == 'float'
-                nodata= None
+                nodata = None
 
             xrimg = xarray.DataArray(img)
             xrimg.name = band
@@ -216,8 +212,6 @@ class DroneData:
 
             if multiband:
                 imgindex += 1
-
-        
 
         # update nodata attribute
         metadata['nodata'] = nodata
@@ -231,14 +225,13 @@ class DroneData:
 
         multi_xarray = multi_xarray.assign_coords(x=tmpxr['x'].data)
         multi_xarray = multi_xarray.assign_coords(y=tmpxr['y'].data)
-        
+
         multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
 
         return multi_xarray
 
     def plot_multiplebands(self, bands, fig_sizex=12, fig_sizey=8):
         return plot_multibands_fromxarray(self.drone_data, bands, fig_sizex, fig_sizey)
-
 
     def plot_singleband(self, band, height=12, width=8):
 
@@ -252,7 +245,6 @@ class DroneData:
 
         ax.set_axis_off()
         plt.show()
-
 
     def multiband_totiff(self, filename, varnames='all'):
 
@@ -297,27 +289,28 @@ class DroneData:
 
         else:
             print('check the bands names that you want to export')
-    
-    def split_into_tiles(self, polygons = False, **kargs):
-        tilesdata = gf.split_xarray_data(self.drone_data, polygons = polygons, **kargs)
-        print("the image wass diveded into {} tiles".format(len(tilesdata)))
-        self.tiles_data = tilesdata
+
+    def split_into_tiles(self, polygons=False, **kargs):
+
+        self.tiles_data = gf.split_xarray_data(self.drone_data, polygons=polygons, **kargs)
+        print("the image was divided into {} tiles".format(len(self.tiles_data)))
+
 
     def __init__(self,
                  inputpath,
                  bands=None,
-                 multiband_image = False,
-                 table = True):
+                 multiband_image=False,
+                 table=True):
 
         if bands is None:
-                self._bands = ['red', 'green', 'blue']
+            self._bands = ['red', 'green', 'blue']
         else:
             self._bands = bands
 
         self._clusters = np.nan
         if not multiband_image:
             self._files_path = get_files_paths(inputpath, self._bands)
-            
+
         else:
             if inputpath.endswith('.tif'):
                 self._files_path = [inputpath for i in range(len(self._bands))]

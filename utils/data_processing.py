@@ -1,21 +1,25 @@
 import numpy as np
 import rasterio.features
 import json
+from PIL import Image
+import os
+from pathlib import Path
 
-def assign_valuestoimg(data, height, width, na_indexes = None):
 
+def assign_valuestoimg(data, height, width, na_indexes=None):
     ids_notnan = np.arange(height *
-                               width)
+                           width)
 
     climg = np.zeros(height *
-                          width, dtype='f')
+                     width, dtype='f')
 
     if na_indexes is not None:
         ids_notnan = np.delete(ids_notnan, na_indexes, axis=0)
 
     climg[list(ids_notnan)] = data
     #
-    return climg.reshape(height , width)
+    return climg.reshape(height, width)
+
 
 def mask_usingGeometry(shp, xr_data):
     ## converto to json
@@ -97,6 +101,7 @@ def get_nan_idsfromarray(nparray):
 
     return np.unique(ids)
 
+
 def from_xarray_2array(xrdata, bands):
     data_list = []
     for i in bands:
@@ -107,10 +112,42 @@ def from_xarray_2array(xrdata, bands):
     return np.array(data_list)
 
 
+def from_xarray_2_rgbimage(xarraydata,
+                           bands=None,
+                           export_as_jpg=False,
+                           ouputpath=None):
+
+
+    if ouputpath is None:
+        ouputpath = "image.jpg"
+        directory = ""
+    else:
+        directory = os.path.dirname(ouputpath)
+
+    if bands is None:
+        bands = np.array(list(xarraydata.keys()))[0:3]
+
+    data_tile = from_xarray_2array(xarraydata, bands)
+
+    if data_tile.shape[0] == 3:
+        data_tile = np.moveaxis(data_tile, 0, -1)
+
+    image = Image.fromarray(data_tile.astype(np.uint8), 'RGB')
+    if export_as_jpg:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+
+        if not ouputpath.endswith(".jpg"):
+            ouputpath = ouputpath + ".jpg"
+
+        image.save(ouputpath)
+
+        print("Image saved: {}".format(ouputpath))
+
+    return image
+
 
 def from_xarray_to_table(xrdata, nodataval=None,
                          remove_nan=True, features_names=None):
-
     if features_names is None:
         npdata = np.array([xrdata[i].data
                            for i in list(xrdata.keys())])
@@ -131,3 +168,29 @@ def from_xarray_to_table(xrdata, nodataval=None,
         npdata = np.delete(npdata.T, idsnan, axis=0)
 
     return [npdata, idsnan]
+
+
+def resize_3dnparray( array,new_size=512):
+
+    if new_size>array.shape[1] and new_size>array.shape[0]:
+        resimg = []
+        for i in range(array.shape[0]):
+            tmp = array[i].copy()
+            tmp = np.hstack([tmp, np.zeros([array.shape[1], (new_size-array.shape[2])])])
+            resimg.append(np.vstack([tmp, np.zeros([(new_size-array.shape[1]), new_size])]))
+    
+    else:
+        if new_size>array.shape[1]:
+            resimg = []
+            for i in range(array.shape[0]):
+                tmp = array[i].copy()
+                resimg.append(np.vstack([tmp, np.zeros([(new_size-array.shape[1]), new_size])]))
+
+
+        if new_size>array.shape[2]:
+            resimg = []
+            for i in range(array.shape[0]):
+                tmp = array[i].copy()
+                resimg.append(np.hstack([tmp, np.zeros([new_size, (new_size-array.shape[2])])]))
+
+    return np.array(resimg)
