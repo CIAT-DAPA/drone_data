@@ -12,6 +12,10 @@ from shapely.geometry import Polygon
 
 import math
 
+from rasterio.crs import CRS
+from rasterio.transform import Affine
+from rasterio import features
+
 
 # adapated from https://github.com/Devyanshu/image-split-with-overlap
 def start_points(size, split_size, overlap=0):
@@ -60,6 +64,85 @@ def get_tiles(ds, nrows=None, ncols=None, width=None, height=None, overlap=0.0):
         window = windows.Window(col_off=col_off, row_off=row_off, width=width, height=height).intersection(big_window)
         transform = windows.transform(window, ds['transform'])
         yield window, transform
+
+
+
+def transform_frombb(bb, spr):
+    xRange = np.arange(bb[0],bb[2]+spr,spr)
+    yRange = np.arange(bb[1],bb[3]+spr,spr)
+
+    gridX,gridY = np.meshgrid(xRange,yRange)
+    
+    return [Affine.translation(gridX[0][0]-spr/2, gridY[0][0]-spr/2)*Affine.scale(spr,spr), gridX.shape]
+
+
+def rasterize_using_bb(gpdf, bb, crs, sres = 0.01):
+
+    transform, imgsize = transform_frombb(bb, sres)
+    rasterCrs = CRS.from_epsg(crs)
+    rasterCrs.data
+
+    return(features.rasterize(zip(gpdf.geometry,gpdf.iloc[:,0].values),
+                              out_shape=[imgsize[0],imgsize[1]], transform=transform))
+                              
+
+def coordinates_fromtransform(transform, imgsize):
+        
+    # All rows and columns
+    cols, rows = np.meshgrid(np.arange(imgsize[0]), np.arange(imgsize[1]))
+
+    # Get affine transform for pixel centres
+    T1 = transform * Affine.translation(0.5, 0.5)
+    # Function to convert pixel row/column index (from 0) to easting/northing at centre
+    rc2en = lambda r, c: (c, r) * T1
+
+    # All eastings and northings (there is probably a faster way to do this)
+    eastings, northings = np.vectorize(rc2en, otypes=[np.float64, np.float64])(rows, cols)
+    return [eastings, northings]
+
+
+
+def list_tif_2xarray(listraster, transform, crs, nodata = 0,bands_names=None):
+
+    
+    imgindex = 1
+    metadata = {
+        'transform' : transform,
+        'crs': crs,
+        'width': listraster[0].shape[1],
+        'height': listraster[1].shape[0]
+    }
+    if(bands_names is None):
+        bands_names = ['band_{}'.format(i) for i in range(len(listraster))]
+
+    riolist = []
+    imgindex = 1
+    for i in range(len(listraster)):
+        img= listraster[i]
+        xrimg = xarray.DataArray(img)
+        xrimg.name = bands_names[i]
+        riolist.append(xrimg)
+        imgindex += 1
+
+    # update nodata attribute
+    metadata['nodata'] = nodata
+    metadata['count'] = imgindex
+
+    multi_xarray = xarray.merge(riolist)
+    multi_xarray.attrs = metadata
+
+    ## assign coordinates
+    
+    x, y = coordinates_fromtransform(transform,
+    [listraster[0].shape[1],listraster[0].shape[0]])
+    multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
+
+    multi_xarray = multi_xarray.assign_coords(x=np.sort(np.unique(x)))
+    multi_xarray = multi_xarray.assign_coords(y=np.sort(np.unique(y)))
+
+    
+
+    return multi_xarray
 
 
 def split_xarray_data(xr_data, polygons=True, **kargs):

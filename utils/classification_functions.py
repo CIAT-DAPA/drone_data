@@ -23,7 +23,7 @@ def pca_transform(data,
     # define the number of components through
     ncomponets = np.max(np.argwhere((pca.explained_variance_ * 100) > variancemin)) + 1
 
-    print("calculating pca with {} components".format(ncomponets))
+    #print("calculating pca with {} components".format(ncomponets))
     # calculate new pca
     pca = PCA(n_components=ncomponets).fit(data)
     scaleddata = pca.transform(data)
@@ -36,7 +36,8 @@ def pca_transform(data,
     return output
 
 
-def kmeans_images(data, nclusters,
+def kmeans_images(data, 
+                  nclusters,
                   scale="minmax",
                   nrndsample="all",
                   seed=123,
@@ -59,7 +60,7 @@ def kmeans_images(data, nclusters,
         scaler = MinMaxScaler().fit(data)
 
     scaleddata = scaler.transform(data)
-    print("scale done!")
+    #print("scale done!")
     if pca:
         pcaresults = pca_transform(scaleddata, eigmin, export_pca)
         scaleddata = pcaresults['pca_transformed']
@@ -72,8 +73,8 @@ def kmeans_images(data, nclusters,
         random_indices = random.sample(range(scaleddata.shape[0]), nrndsample)
         datatotrain = scaleddata[random_indices]
 
-    print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
-                                                          datatotrain.shape[1]))
+    #print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
+    #                                                      datatotrain.shape[1]))
     kmeansclusters = KMeans(n_clusters=nclusters).fit(datatotrain)
     clusters = kmeansclusters.predict(scaleddata)
     output = {
