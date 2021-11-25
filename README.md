@@ -1,5 +1,10 @@
 
 ## Procesar imágenes de drones
+<p align="center">
+<img src="https://ciat.cgiar.org/wp-content/uploads/Alliance_logo.png" alt="CIAT" id="logo" data-height-percentage="90" data-actual-width="140" data-actual-height="55">
+<img src="https://www.kindpng.com/imgv/hoRRmih_logo-ccafs-hd-png-download/" alt="CCAFS" id="logo2" data-height-percentage="90" width="230" height="52">
+</p>
+
 
 Este repositorio se creó con la intención de facilitar el procesamiento de imágenes de drones, con la intención de crear fácilmente índices vegetales y mapas de coberturas, a partir de bandas espectrales tomadas por drones.
 A continuación se muestra un ejemplo de su uso y de algunas funciones disponibles hasta el momento.
