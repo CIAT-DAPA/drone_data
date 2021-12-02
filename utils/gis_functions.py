@@ -16,6 +16,73 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 from rasterio import features
 
+import affine
+
+from skimage.transform import SimilarityTransform
+from skimage.transform import warp
+from skimage.registration import phase_cross_correlation
+
+
+def xy_fromtransform(transform, width, height):
+
+    T0 = transform
+    T1 = T0 * affine.Affine.translation(0.5, 0.5)
+    rc2xy = lambda r, c:  T1 * (c, r)
+    xvals = []
+    for i in range(width):
+        xvals.append(rc2xy(0, i)[0])
+
+    yvals = []
+    for i in range(height):
+        yvals.append(rc2xy(i, 0)[1])
+
+    
+    xvals = np.array(xvals)
+    xvals = np.sort(xvals,axis = 0)[::-1]
+
+    yvals = np.array(yvals)
+    yvals = np.sort(yvals,axis = 0)[::-1]
+
+    return [xvals, yvals]
+
+def register_image_shift(data, shift):
+    tform = SimilarityTransform(translation=(-shift[1], shift[0]))
+    imglist = []
+    for i in range(data.shape[2]):
+        imglist.append(warp(data[:,:,i], inverse_map = tform, order = 0, preserve_range = True))
+
+    return np.dstack(imglist)
+
+
+def register_xarray(xarraydata, shift):
+
+    data = xarraydata.copy()
+    dataarray = np.dstack([data[i].data for i in list(data.keys())])
+
+    imgregistered = register_image_shift(dataarray,shift)
+
+    for i,band in enumerate(list(data.keys())):
+        data[band].values = imgregistered[:,:,i]
+    
+    return data
+
+
+def find_shift_between2xarray(offsetdata, refdata, band = 'red', clipboundaries = None, buffer = None):
+
+    if clipboundaries is not None:
+        offsetdata = clip_xarraydata(offsetdata, clipboundaries, bands = [band], buffer = buffer)
+        refdata = clip_xarraydata(refdata, clipboundaries, bands = [band] , buffer = buffer)
+
+    offsetdata = offsetdata.fillna(0)
+    refdata = refdata.fillna(0)
+
+    if refdata[band].shape[0] != offsetdata[band].shape[0]:
+        refdata = resample_xarray(refdata,offsetdata).fillna(0)
+    
+    shift, error, diffphase = phase_cross_correlation(refdata[band].data, offsetdata[band].data)
+    
+    return shift, error, diffphase
+
 
 # adapated from https://github.com/Devyanshu/image-split-with-overlap
 def start_points(size, split_size, overlap=0):
@@ -67,13 +134,63 @@ def get_tiles(ds, nrows=None, ncols=None, width=None, height=None, overlap=0.0):
 
 
 
-def transform_frombb(bb, spr):
-    xRange = np.arange(bb[0],bb[2]+spr,spr)
-    yRange = np.arange(bb[1],bb[3]+spr,spr)
+def clip_xarraydata(xarraydata, gpdata, bands = None, buffer = None):
 
-    gridX,gridY = np.meshgrid(xRange,yRange)
+    gpdataclip = gpdata.copy()
+    if buffer is not None:
+        geom = gpdataclip.geometry.values.buffer(buffer, join_style=2)
+    else:
+        geom =gpdataclip.geometry.values
+    
+    listclipped = []
+    if bands is None:
+        bands = list(xarraydata.keys())
+
+    for band in bands:
+        xrtoclip = xarraydata[band].copy()
+        xrtoclip = xrtoclip.rio.set_crs(xarraydata.attrs['crs'])
+        listclipped.append(xrtoclip.rio.clip(geom, gpdataclip.crs))
+
+    clippedmerged = xarray.merge(listclipped)
+    clippedmerged.attrs = xarraydata.attrs
+    clippedmerged.attrs['nodata'] = xarraydata.attrs['nodata']
+    tr= transform_fromxy(clippedmerged.x.values, clippedmerged.y.values, np.abs(xarraydata.attrs['transform'][0]))
+    clippedmerged.attrs['transform'] = tr[0]
+    clippedmerged.attrs['crs'] = xarraydata.attrs['crs']
+    clippedmerged.attrs['width'] = clippedmerged[list(clippedmerged.keys())[0]].shape[1]
+    clippedmerged.attrs['height'] = clippedmerged[list(clippedmerged.keys())[0]].shape[0]
+
+    return clippedmerged
+
+
+
+
+def resample_xarray(xarraydata, xrreference):
+
+    refimagephase = xarraydata.interp(x=xrreference['x'].values, y=xrreference['y'].values)
+    refimagephase.attrs['transform'] = transform_fromxy(
+        xrreference.x.values, 
+        xrreference.y.values, xrreference.attrs['transform'][0])[0]
+
+    refimagephase.attrs['height'] = refimagephase[list(refimagephase.keys())[0]].shape[0]
+    refimagephase.attrs['width'] = refimagephase[list(refimagephase.keys())[0]].shape[1]
+    refimagephase.attrs['dtype'] = refimagephase[list(refimagephase.keys())[0]].data.dtype
+
+    return refimagephase
+
+
+def transform_fromxy(x, y, spr):
+
+    gridX,gridY = np.meshgrid(x,y)
     
     return [Affine.translation(gridX[0][0]-spr/2, gridY[0][0]-spr/2)*Affine.scale(spr,spr), gridX.shape]
+
+
+def transform_frombb(bb, spr):
+
+    xRange = np.arange(bb[0],bb[2]+spr,spr)
+    yRange = np.arange(bb[1],bb[3]+spr,spr)
+    return transform_fromxy(xRange, yRange, spr)
 
 
 def rasterize_using_bb(gpdf, bb, crs, sres = 0.01):

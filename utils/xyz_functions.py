@@ -16,6 +16,20 @@ from utils.classification_functions import kmeans_images
 from utils.gis_functions import transform_frombb, rasterize_using_bb,list_tif_2xarray
 from utils.plt_functions import plot_2d_cloudpoints
 
+
+def fromxyz_to_xarray_metrics(xyzpaths, gpdpolygon, baselinemethod = "max_probability", multiprocess= False, nworkers=2, removebsl = False):
+
+    points_perplant = CloudPoints(xyzpaths, gpdpolygon, multiprocess= multiprocess, nworkers=nworkers)
+    
+    if removebsl:
+        points_perplant.remove_baseline(method = baselinemethod)
+
+    points_perplant = points_perplant.to_xarray()
+    points_perplant = calculate_leaf_angle(points_perplant)
+
+    return points_perplant
+    
+
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
 
     cond1 = True
@@ -69,7 +83,7 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'cluster
         bsl = df.groupby('cluster').agg({2: 'mean'}
             ).sort_values(by=[2], ascending=False).iloc[0:nmaxcl].mean().values[0]
 
-    if method == 'histogram':
+    if method == 'max_probability':
 
         ydata = df.iloc[:,1].values.copy()
         zdata = df.iloc[:,2].values.copy()
@@ -192,11 +206,11 @@ class CloudPoints:
                         cloud_reference = 0, scale_height = 100, 
                         applybsl = True,**kargs):
         if method is None:
-            method = "histogram"
+            method = "max_probability"
 
         bsl = get_baseline_altitude(self.cloud_points[cloud_reference].iloc[:,0:6], method=method , **kargs)
         self._bsl = bsl
-        print("the baseline used was {}".format(bsl))
+        #print("the baseline used was {}".format(bsl))
         if applybsl:
             for i in range(len(self.cloud_points)):
                 data = self.cloud_points[i].copy()
@@ -229,7 +243,7 @@ class CloudPoints:
 
         cllist = []
         if multiprocess:
-            print("Multiprocess initialization")
+            #print("Multiprocess initialization")
             cloud_thread = []
             with cf.ProcessPoolExecutor(max_workers=nworkers) as executor:
                 for i in range(len(xyzfile)):

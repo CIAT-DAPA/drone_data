@@ -6,6 +6,7 @@ import glob
 
 from utils import data_processing
 from utils.plt_functions import plot_multibands_fromxarray
+from rasterio.windows import from_bounds
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -15,15 +16,37 @@ import pandas as pd
 import geopandas as gpd
 
 from utils import gis_functions as gf
+from rasterio.windows import get_data_window
 
+
+def drop_bands(xarraydata, bands):
+    for i in bands:
+        xarraydata = xarraydata.drop(i)
+    
+    return xarraydata
+
+def _solve_red_edge_order(listpaths, bands):
+
+    ordered =[]
+    for band in bands:
+        for src in listpaths:
+            if band in src and band not in ordered:
+                if "red" in src and "red" == band:
+                    if "edge" not in src:
+                        ordered.append(src)
+                else:
+                    ordered.append(src)
+
+    return ordered
 
 def filter_list(list1, list2):
     list_filtered = []
     for strlist2 in list2:
         for strlist1 in list1:
             if strlist2 in strlist1:
-                list_filtered.append(strlist1)
-
+                if strlist1 not in list_filtered:
+                    list_filtered.append(strlist1)
+    
     return list_filtered
 
 
@@ -40,7 +63,10 @@ def get_files_paths(path, bands):
     try:
 
         imgfiles = glob.glob(path + "*.tif")
+        
         imgfiles_filtered = filter_list(imgfiles, bands)
+        if "edge" in bands:
+            imgfiles_filtered = _solve_red_edge_order(imgfiles_filtered, bands)
 
         return imgfiles_filtered
 
@@ -99,27 +125,40 @@ class DroneData:
         if 'r_edge' in self.variable_names:
             r_edge = self.drone_data.r_edge.data
             r_edge[r_edge == namask] = np.nan
+        
+        if 'edge' in self.variable_names:
+            edge = self.drone_data.edge.data
+            edge[edge == namask] = np.nan
 
-        if expression is not None:
-            vidata = eval(expression)
-            if label is None:
-                label = vi
+        
 
-        elif vi == 'ndvi':
-            vidata = normalized_difference(nir, red, self.drone_data.attrs['nodata'])
-            label = 'ndvi'
+        if vi not in self.variable_names:
 
-        elif vi == 'ndvire':
-            vidata = normalized_difference(nir, r_edge, self.drone_data.attrs['nodata'])
-            label = 'ndvire'
+            if expression is not None:
+                vidata = eval(expression)
+                
+                if label is None:
+                    label = vi
 
-        vidata[np.isnan(vidata)] = self.drone_data.attrs['nodata']
+            elif vi == 'ndvi':
+                vidata = normalized_difference(nir, red, self.drone_data.attrs['nodata'])
+                label = 'ndvi'
 
-        xrvidata = xarray.DataArray(vidata)
-        xrvidata.name = label
-        xrvidata = xrvidata.rename({'dim_0': 'y', 'dim_1': 'x'})
+            elif vi == 'ndvire':
+                vidata = normalized_difference(nir, r_edge, self.drone_data.attrs['nodata'])
+                label = 'ndvire'
 
-        self.drone_data = xarray.merge([self.drone_data, xrvidata])
+            vidata[np.isnan(vidata)] = self.drone_data.attrs['nodata']
+
+            xrvidata = xarray.DataArray(vidata)
+            xrvidata.name = label
+            xrvidata = xrvidata.rename({'dim_0': 'y', 'dim_1': 'x'})
+
+            self.drone_data = xarray.merge([self.drone_data, xrvidata])
+
+        else:
+            print("the VI {} was calculated before {}".format(vi, self.variable_names))
+
 
     def rf_classification(self, model, features=None):
 
@@ -190,21 +229,35 @@ class DroneData:
                                      bands,
                                      long=long_direction)
 
-    def tif_toxarray(self, multiband=False):
+    def tif_toxarray(self, multiband=False, bounds = None):
 
         riolist = []
         imgindex = 1
+        nodata = None
+        boundswindow = None
         for band, path in zip(self._bands, self._files_path):
-
+            
             with rasterio.open(path) as src:
-                img = src.read(imgindex)
+
+                tr = src.transform
+
+                if bounds is not None:
+                    boundswindow = from_bounds(bounds[0],bounds[1],bounds[2],bounds[3], src.transform)
+                    tr = src.window_transform(boundswindow)
+
+                img = src.read(imgindex, window = boundswindow)
+
                 nodata = src.nodata
                 metadata = src.profile.copy()
+                metadata.update({
+                    'height': img.shape[0],
+                    'width': img.shape[1],
+                    'transform': tr})
 
             if img.dtype == 'uint8':
                 img = img.astype(float)
                 metadata['dtype'] == 'float'
-                nodata = None
+
 
             xrimg = xarray.DataArray(img)
             xrimg.name = band
@@ -221,17 +274,18 @@ class DroneData:
         multi_xarray.attrs = metadata
 
         ## assign coordinates
-        tmpxr = xarray.open_rasterio(self._files_path[0])
+        #tmpxr = xarray.open_rasterio(self._files_path[0])
+        xvalues, yvalues = gf.xy_fromtransform(metadata['transform'], metadata['width'],metadata['height'])
 
-        multi_xarray = multi_xarray.assign_coords(x=tmpxr['x'].data)
-        multi_xarray = multi_xarray.assign_coords(y=tmpxr['y'].data)
+        multi_xarray = multi_xarray.assign_coords(x=xvalues)
+        multi_xarray = multi_xarray.assign_coords(y=yvalues)
 
         multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
 
         return multi_xarray
 
-    def plot_multiplebands(self, bands, fig_sizex=12, fig_sizey=8):
-        return plot_multibands_fromxarray(self.drone_data, bands, fig_sizex, fig_sizey)
+    def plot_multiplebands(self, bands, height=20, width=14):
+        return plot_multibands_fromxarray(self.drone_data, bands, height, width)
 
     def plot_singleband(self, band, height=12, width=8):
 
@@ -241,8 +295,8 @@ class DroneData:
         datatoplot[datatoplot == self.drone_data.attrs['nodata']] = np.nan
         fig, ax = plt.subplots(figsize=(height, width))
 
-        ax.imshow(datatoplot)
-
+        im = ax.imshow(datatoplot)
+        fig.colorbar(im, ax=ax)
         ax.set_axis_off()
         plt.show()
 
@@ -300,7 +354,8 @@ class DroneData:
                  inputpath,
                  bands=None,
                  multiband_image=False,
-                 table=True):
+                 table=True,
+                 bounds = None):
 
         if bands is None:
             self._bands = ['red', 'green', 'blue']
@@ -314,8 +369,16 @@ class DroneData:
         else:
             if inputpath.endswith('.tif'):
                 self._files_path = [inputpath for i in range(len(self._bands))]
+            else:
+                imgfiles = glob.glob(inputpath + "*.tif")[0]
+                self._files_path = [imgfiles for i in range(len(self._bands))]
 
-        self.drone_data = self.tif_toxarray(multiband_image)
+
+        if len(self._files_path)>0:
+            self.drone_data = self.tif_toxarray(multiband_image, bounds=bounds)
+        else:
+            raise ValueError('Non file path was found')
+            
 
         if table:
             self._data, self._nanindex = self.data_astable()

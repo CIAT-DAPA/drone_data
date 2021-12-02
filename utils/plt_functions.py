@@ -26,6 +26,9 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
     threebanddata = []
     for i in bands:
         banddata = xarradata[i].data
+        if banddata.dtype == np.uint8 or banddata.dtype == np.uint16:
+           banddata = banddata.astype(np.float16)
+
         banddata[banddata == xarradata.attrs['nodata']] = np.nan
         threebanddata.append(data_processing.scaleminmax(banddata))
 
