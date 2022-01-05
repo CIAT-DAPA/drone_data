@@ -95,3 +95,31 @@ def plot_2d_cloudpoints(clpoints, figsize = (10,6), xaxis = "latitude"):
     
 
     plt.show()
+
+
+
+def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
+    
+    n_clusters = np.unique(ncluster).max()+1
+    sz = tsdata.shape[1]
+
+    ncols = int(n_clusters/2)
+    fig, axs = plt.subplots(nrow, ncols,figsize=(25,10))
+    #fig, (listx) = plt.subplots(2, 2)
+
+    maxy = tsdata.max() + 0.5*tsdata.std()
+    it = 0
+    for xi in range(nrow):
+        for yi in range(ncols):
+            for xx in tsdata[ncluster == it]:
+                axs[xi,yi].plot(xx.ravel(), "k-", alpha=.2)
+
+    
+            axs[xi,yi].plot(tsdata[ncluster == it].mean(axis = 0), "r-")
+            
+            axs[xi,yi].set_title('Cluster {}, nplants {}'.format(it + 1, tsdata[ncluster == it].shape[0]))
+
+
+            axs[xi,yi].set_ylim([0, maxy])
+
+            it +=1

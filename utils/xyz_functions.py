@@ -40,10 +40,10 @@ def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
             cond1 =float(linecache.getline(file_path,idx2).split(' ')[0])<=(bb[2] + buffer)
         else:
             idx = idx2
-
+        
         idx2+=step
     idxdif = idx2 - idx
-
+    linecache.clearcache()
     return ([idx, idxdif])
 
 
@@ -66,11 +66,11 @@ def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000):
     
     chunks = pd.read_csv(file_path,skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
     df = pd.concat(valid(chunks, bb, buffer))
-
+    
     return df
 
 
-def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'cluster', 
+def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_probability', 
                           quantile_val = .85, stdtimes = 1):
 
 
@@ -117,7 +117,7 @@ def from_cloudpoints_to_xarray(dfcloudlist,
         list_rasters = []
         for i in range(2,totallength):
             list_rasters.append(rasterize_using_bb(dfcloudlist[j].iloc[:,[i,totallength]], 
-                                                   bounds, crs = coords_system))
+                                                   bounds, crs = coords_system, sres = spatial_res))
 
         xarraylist.append(list_tif_2xarray(list_rasters, trans, 
                                            crs = coords_system,
@@ -171,8 +171,13 @@ def get_angle_image_fromxarray(xarradata, vcenter = (1,1,0)):
     return(anglelist)
 
 
+def remove_bsl_toxarray(xarraydata, baselineval, scale_height = 100):
+                
+    xrfiltered = xarraydata.where(xarraydata.z > baselineval, np.nan)
+    xrfiltered.z.loc[:] = (xrfiltered.z.loc[:] - baselineval)*scale_height
 
-
+    return xrfiltered
+    
 
 def calculate_angle_twovectors(v1,v2):
     
@@ -204,11 +209,15 @@ class CloudPoints:
 
     def remove_baseline(self, method= None, 
                         cloud_reference = 0, scale_height = 100, 
-                        applybsl = True,**kargs):
+                        applybsl = True,baselineval = None,**kargs):
         if method is None:
             method = "max_probability"
+        
+        if baselineval is None:
+            bsl = get_baseline_altitude(self.cloud_points[cloud_reference].iloc[:,0:6], method=method , **kargs)
+        else:
+            bsl = baselineval
 
-        bsl = get_baseline_altitude(self.cloud_points[cloud_reference].iloc[:,0:6], method=method , **kargs)
         self._bsl = bsl
         #print("the baseline used was {}".format(bsl))
         if applybsl:
@@ -229,8 +238,11 @@ class CloudPoints:
                     step = 1000,
                     crs = 32654,
                     variables = ["z", "red","green", "blue"],
+                    asxarray = False,
+                    sp_res = 0.01,
                     multiprocess = False,
-                    nworkers = 2):
+                    nworkers = 2, 
+                    verbose = False):
 
         self._crs =  crs     
         self.boundaries = gpdpolygon.bounds
@@ -261,12 +273,26 @@ class CloudPoints:
            
         else:
             for i in range(len(xyzfile)):
+                if verbose:
+                    print(xyzfile[i])
     
-                gdf =  clip_cloudpoints_as_gpd(xyzfile[i],gpdpolygon, crs=self._crs,buffer = buffer,step = step)
+                gdf =  clip_cloudpoints_as_gpd(xyzfile[i],gpdpolygon, 
+                                               crs=self._crs,
+                                               buffer = buffer,
+                                               step = step)
+                if asxarray:
+                    gdf = from_cloudpoints_to_xarray([gdf],
+                                   self.boundaries, 
+                                   self._crs,
+                                   self.variables_names,
+                                   spatial_res = sp_res,
+                                   newdim_values = 'date')
                 cllist.append(gdf)
             
-
-
+            if asxarray:
+                lenimgs = len(cllist)
+                cllist = xarray.concat(cllist, dim='date')
+                cllist.assign_coords(date = [m+1 for m in range(lenimgs)])
 
         self.cloud_points = cllist
 

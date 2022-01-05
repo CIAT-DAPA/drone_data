@@ -75,7 +75,9 @@ def kmeans_images(data,
 
     #print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
     #                                                      datatotrain.shape[1]))
-    kmeansclusters = KMeans(n_clusters=nclusters).fit(datatotrain)
+
+    kmeansclusters = KMeans(n_clusters=nclusters,
+                            random_state=seed).fit(datatotrain)
     clusters = kmeansclusters.predict(scaleddata)
     output = {
         'labels': clusters,

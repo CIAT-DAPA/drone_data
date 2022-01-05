@@ -9,14 +9,13 @@ from utils.plt_functions import plot_multibands_fromxarray
 from rasterio.windows import from_bounds
 
 import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
-from sklearn.cluster import KMeans
+
 from utils import classification_functions as clf
 import pandas as pd
 import geopandas as gpd
-
+import rasterio.mask
 from utils import gis_functions as gf
-from rasterio.windows import get_data_window
+
 
 
 def drop_bands(xarraydata, bands):
@@ -149,7 +148,7 @@ class DroneData:
                 label = 'ndvire'
 
             vidata[np.isnan(vidata)] = self.drone_data.attrs['nodata']
-
+            vidata[vidata == namask] = np.nan
             xrvidata = xarray.DataArray(vidata)
             xrvidata.name = label
             xrvidata = xrvidata.rename({'dim_0': 'y', 'dim_1': 'x'})
@@ -235,20 +234,28 @@ class DroneData:
         imgindex = 1
         nodata = None
         boundswindow = None
+        
         for band, path in zip(self._bands, self._files_path):
             
             with rasterio.open(path) as src:
 
                 tr = src.transform
-
-                if bounds is not None:
-                    boundswindow = from_bounds(bounds[0],bounds[1],bounds[2],bounds[3], src.transform)
-                    tr = src.window_transform(boundswindow)
-
-                img = src.read(imgindex, window = boundswindow)
-
                 nodata = src.nodata
                 metadata = src.profile.copy()
+                if bounds is not None:
+                    #boundswindow = from_bounds(bounds[0],bounds[1],bounds[2],bounds[3], src.transform)
+                    #tr = src.window_transform(boundswindow)
+                    img, tr = rasterio.mask.mask(src, bounds, crop=True)
+                   
+                    img = img[(imgindex-1),:,:]
+                    img = img.astype(float)
+                    img[img == nodata] = np.nan
+                    nodata = np.nan
+
+                else:
+                    img = src.read(imgindex, window = boundswindow)
+                    
+                
                 metadata.update({
                     'height': img.shape[0],
                     'width': img.shape[1],
@@ -279,7 +286,7 @@ class DroneData:
 
         multi_xarray = multi_xarray.assign_coords(x=xvalues)
         multi_xarray = multi_xarray.assign_coords(y=yvalues)
-
+        
         multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
 
         return multi_xarray
