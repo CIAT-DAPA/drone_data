@@ -8,7 +8,6 @@ import pandas as pd
 import linecache
 import xarray
 
-from datetime import datetime
 from scipy.stats import gaussian_kde
 
 
@@ -16,19 +15,6 @@ from utils.classification_functions import kmeans_images
 from utils.gis_functions import transform_frombb, rasterize_using_bb,list_tif_2xarray
 from utils.plt_functions import plot_2d_cloudpoints
 
-
-def fromxyz_to_xarray_metrics(xyzpaths, gpdpolygon, baselinemethod = "max_probability", multiprocess= False, nworkers=2, removebsl = False):
-
-    points_perplant = CloudPoints(xyzpaths, gpdpolygon, multiprocess= multiprocess, nworkers=nworkers)
-    
-    if removebsl:
-        points_perplant.remove_baseline(method = baselinemethod)
-
-    points_perplant = points_perplant.to_xarray()
-    points_perplant = calculate_leaf_angle(points_perplant)
-
-    return points_perplant
-    
 
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
 

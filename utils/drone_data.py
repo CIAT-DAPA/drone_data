@@ -16,7 +16,7 @@ import geopandas as gpd
 import rasterio.mask
 from utils import gis_functions as gf
 
-
+import re
 
 def drop_bands(xarraydata, bands):
     for i in bands:
@@ -72,6 +72,55 @@ def get_files_paths(path, bands):
     except ValueError:
         print("file path doesn't exist")
 
+def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
+
+    variable_names = list(xarraydata.keys())
+    namask = xarraydata.attrs['nodata']
+    # modify expresion finding varnames
+    symbolstoremove = ['*','-','+','/',')','(',' ','[',']']
+    test = expression
+    for c in symbolstoremove:
+        test = test.replace(c, '-')
+
+    test = re.sub('\d', '-', test)
+    varnames = [i for i in np.unique(np.array(test.split('-'))) if i != '']
+    for i, varname in enumerate(varnames):
+        if varname in variable_names:
+            exp = (['listvar[{}]'.format(i), varname])
+            expression = expression.replace(exp[1], exp[0])
+        else:
+            raise ValueError('there is not a variable named as {}'.format(varname))
+    
+    listvar = []
+    if vi not in variable_names:
+
+        for i, varname in enumerate(varnames):
+            if varname in variable_names:
+                varvalue = xarraydata[varname].data
+                varvalue[varvalue == namask] = np.nan
+                listvar.append(varvalue)
+
+        vidata = eval(expression)
+            
+        if label is None:
+            label = vi
+
+        vidata[np.isnan(vidata)] = xarraydata.attrs['nodata']
+        vidata[vidata == namask] = np.nan
+        xrvidata = xarray.DataArray(vidata)
+        xrvidata.name = label
+        xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+                                            list(xarraydata.dims.keys()))))
+
+        xarraydata = xarray.merge([xarraydata, xrvidata])
+
+        xarraydata.attrs['count'] = len(list(xarraydata.keys()))
+
+    else:
+        print("the VI {} was calculated before {}".format(vi, variable_names))
+
+    return xarraydata
+
 
 class DroneData:
 
@@ -108,56 +157,16 @@ class DroneData:
         return [npdata2dclean, idsnan]
 
     def calculate_vi(self, vi='ndvi', expression=None, label=None):
-        namask = self.drone_data.attrs['nodata']
-        if 'blue' in self.variable_names:
-            blue = self.drone_data.blue.data
-            blue[blue == namask] = np.nan
-        if 'green' in self.variable_names:
-            green = self.drone_data.green.data
-            green[green == namask] = np.nan
-        if 'red' in self.variable_names:
-            red = self.drone_data.red.data
-            red[red == namask] = np.nan
-        if 'nir' in self.variable_names:
-            nir = self.drone_data.nir.data
-            nir[nir == namask] = np.nan
-        if 'r_edge' in self.variable_names:
-            r_edge = self.drone_data.r_edge.data
-            r_edge[r_edge == namask] = np.nan
-        
-        if 'edge' in self.variable_names:
-            edge = self.drone_data.edge.data
-            edge[edge == namask] = np.nan
+        if vi == 'ndvi':
+            if 'nir' in self.variable_names:
+                expression = '(nir - red) / (nir + red)' 
+            else:
+                raise ValueError('It was not possible to calculate ndvi as default, please provide equation')
 
-        
+        elif expression is None:
+            raise ValueError('please provide a equation to calculate this index: {}'.format(vi))
 
-        if vi not in self.variable_names:
-
-            if expression is not None:
-                vidata = eval(expression)
-                
-                if label is None:
-                    label = vi
-
-            elif vi == 'ndvi':
-                vidata = normalized_difference(nir, red, self.drone_data.attrs['nodata'])
-                label = 'ndvi'
-
-            elif vi == 'ndvire':
-                vidata = normalized_difference(nir, r_edge, self.drone_data.attrs['nodata'])
-                label = 'ndvire'
-
-            vidata[np.isnan(vidata)] = self.drone_data.attrs['nodata']
-            vidata[vidata == namask] = np.nan
-            xrvidata = xarray.DataArray(vidata)
-            xrvidata.name = label
-            xrvidata = xrvidata.rename({'dim_0': 'y', 'dim_1': 'x'})
-
-            self.drone_data = xarray.merge([self.drone_data, xrvidata])
-
-        else:
-            print("the VI {} was calculated before {}".format(vi, self.variable_names))
-
+        self.drone_data = calculate_vi_fromxarray(self.drone_data, vi, expression, label)
 
     def rf_classification(self, model, features=None):
 

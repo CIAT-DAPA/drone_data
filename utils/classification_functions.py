@@ -4,8 +4,11 @@ import random
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 import numpy as np
-from utils import data_processing
+import pandas as pd
 
+import xarray
+from utils.data_processing import from_xarray_to_table
+from utils.data_processing import assign_valuestoimg
 
 def pca_transform(data,
                   variancemin=0.5,
@@ -95,7 +98,7 @@ def img_rf_classification(xrdata, model, ml_features):
     idvarsmodel = [list(xrdata.keys()).index(i) for i in ml_features]
 
     if len(idvarsmodel) == len(ml_features):
-        npdata, idsnan = data_processing.from_xarray_to_table(xrdata,
+        npdata, idsnan = from_xarray_to_table(xrdata,
                                                               nodataval=xrdata.attrs['nodata'],
                                                               features_names=ml_features)
 
@@ -106,6 +109,53 @@ def img_rf_classification(xrdata, model, ml_features):
         height = xrdata.dims['y']
         width = xrdata.dims['x']
 
-        return data_processing.assign_valuestoimg(ml_predicition,
+        return assign_valuestoimg(ml_predicition,
                                                   height,
                                                   width, idsnan)
+
+
+
+def cluster_3dxarray(xrdata, cluster_dict):
+
+    listnames = list(xrdata.keys())
+    listdims = list(xrdata.dims.keys())
+
+    npdata2dclean, idsnan = from_xarray_to_table(xrdata, 
+                                                 nodataval= xrdata.attrs['nodata'])
+    
+    npdata2dclean = pd.DataFrame(npdata2dclean, columns = listnames)
+    
+    if 'scale_model' in list(cluster_dict.keys()):
+        npdata2dclean = cluster_dict['scale_model'].transform(npdata2dclean)
+    if 'pca_model' in list(cluster_dict.keys()):
+        npdata2dclean = cluster_dict['pca_model'].transform(npdata2dclean)
+
+    dataimage = cluster_dict['kmeans_model'].predict(npdata2dclean)
+    xrsingle = xarray.DataArray(
+            assign_valuestoimg(dataimage+1, xrdata.dims[listdims[0]],
+                                            xrdata.dims[listdims[1]], 
+                                            idsnan))
+    xrsingle.name = 'cluster'
+    
+    return xrsingle
+
+
+
+def cluster_4dxarray(xarraydata, cl_dict):
+
+    dim1 = xarraydata.dims[list(xarraydata.dims)[0]]
+    imglist = []
+
+    for i in range(dim1):
+        dataimg = xarraydata.isel(date = i)
+        xrsingle = cluster_3dxarray(dataimg, cl_dict)
+
+        imglist.append(xrsingle)
+
+    clxarray = xarray.concat(imglist, list(xarraydata.dims)[0])
+    clxarray = clxarray.rename(dict(zip(clxarray.dims,
+                                                list(xarraydata.dims.keys()))))
+
+    xrdata = xarray.merge([xarraydata, clxarray])
+
+    return xrdata
