@@ -123,3 +123,34 @@ def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
             axs[xi,yi].set_ylim([0, maxy])
 
             it +=1
+
+
+def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertaxis = True):
+    
+    """Plot a montage of 20 CT slices"""
+    #data list [nsamples, x, y]
+    if rot:
+        data = np.rot90(data)
+    #data = np.transpose(data)
+    data = np.reshape(data, (num_rows, num_columns, width, height))
+    rows_data, columns_data = data.shape[0], data.shape[1]
+    heights = [slc[0].shape[0] for slc in data]
+    widths = [slc.shape[1] for slc in data[0]]
+    fig_width = 12.0
+    fig_height = fig_width * sum(heights) / sum(widths)
+    f, axarr = plt.subplots(
+        rows_data,
+        columns_data,
+        figsize=(fig_width, fig_height),
+        gridspec_kw={"height_ratios": heights},
+    )
+    for i in range(rows_data):
+        for j in range(columns_data):
+            m = np.transpose(data[i][j])
+            axarr[i, j].imshow(m, cmap="gray")
+            axarr[i, j].axis("off")
+            if invertaxis:
+                
+                axarr[i, j].invert_yaxis()
+    plt.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
+    plt.show()

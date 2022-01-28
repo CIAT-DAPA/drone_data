@@ -5,7 +5,31 @@ from PIL import Image
 import os
 from pathlib import Path
 
+from dateutil.parser import parse
+import re
 
+def is_date(string, fuzzy=False):
+    """
+    Return whether the string can be interpreted as a date.
+
+    :param string: str, string to check for date
+    :param fuzzy: bool, ignore unknown tokens in string if True
+    """
+    try: 
+        parse(string, fuzzy=fuzzy)
+        return True
+
+    except ValueError:
+        return False
+
+def find_date_instring(string, pattern = "202"):
+    
+    matches = re.finditer(pattern, string)
+    matches_positions = [string[match.start():match.start() +8] 
+                            for match in matches if is_date(string[match.start():match.start() +8])]
+
+    return matches_positions[0]
+    
 def assign_valuestoimg(data, height, width, na_indexes=None):
     ids_notnan = np.arange(height *
                            width)
