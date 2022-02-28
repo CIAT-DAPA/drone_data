@@ -289,41 +289,59 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0, bands_names=None):
 
     return multi_xarray
 
+def crop_using_windowslice(xr_data, window, transform):
+    """
+    mask a xrarray using a window
+    """
+    xrwindowsel = xr_data.isel(y=window.toslices()[0],
+                                     x=window.toslices()[1]).copy()
 
-def split_xarray_data(xr_data, polygons=True, **kargs):
+    xrwindowsel.attrs['width'] = xrwindowsel.sizes['x']
+    xrwindowsel.attrs['height'] = xrwindowsel.sizes['y']
+    xrwindowsel.attrs['transform'] = transform
+
+    return xrwindowsel
+
+
+def split_xarray_data(xr_data, polygons=True, onlypolygons = False,**kargs):
     """
 
     :param xr_data: xarray data with x and y coordinates names
     :param polygons: export polygons
     :param kargs:
+         nrows:
+         ncols:
+         width:
+         height:
+        :param overlap: [0.0 - 1]
+        :return:
     :return:
     """
     xarrayall = xr_data.copy()
     m = get_tiles(xarrayall.attrs, **kargs)
 
     boxes = []
-    imgslist = []
+    orgnizedwidnowslist = []
     i = 0
     for window, transform in m:
 
-        xrwindowsel = xarrayall.isel(y=window.toslices()[0],
-                                     x=window.toslices()[1]).copy()
-
-        xrwindowsel.attrs['width'] = xrwindowsel.sizes['x']
-        xrwindowsel.attrs['height'] = xrwindowsel.sizes['y']
-        xrwindowsel.attrs['transform'] = transform
-        imgslist.append(xrwindowsel)
+        #xrmasked = crop_using_windowslice(xarrayall, window, transform)
+        #imgslist.append(xrmasked)
+        orgnizedwidnowslist.append((window,transform))
         if polygons:
             coords = window.toranges()
             xcoords = coords[1]
             ycoords = coords[0]
             boxes.append((i, Polygon([(xcoords[0], ycoords[0]), (xcoords[1], ycoords[0]),
                                       (xcoords[1], ycoords[1]), (xcoords[0], ycoords[1])])))
-            i += 1
+        i += 1
     if polygons:
-        output = [imgslist, boxes]
+        output = [m, boxes]
+    #else:
+    #    output = imgslist
+
     else:
-        output = imgslist
+        output = orgnizedwidnowslist
     return output
 
 
@@ -399,16 +417,21 @@ def AoI_from_polygons(p1, p2):
     return intersecarea / unionarea
 
 
-def calculate_AoI_fromlist(data, ref, list_ids):
+
+def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
     area_per_iter = []
     ylist = []
     for y in list_ids:
-        ref2 = data.loc[data.id == y,].copy()
-        area_per_iter.append(AoI_from_polygons(ref2.geometry.values[0],
+        ref2 = data.loc[data.id == y,].copy().geometry.values[0]
+        if not invert:
+            area_per_iter.append(AoI_from_polygons(ref2,
                                                ref))
+        else:
+            area_per_iter.append(ref2.intersection(ref).area / ref2.area)
         ylist.append(y)
 
     return [area_per_iter, ylist]
+
 
 
 def get_minmax_pol_coords(p):
@@ -435,101 +458,84 @@ def best_polygon(overlaylist):
 
     return from_xyxy_2polygon(x1, y1, x2, y2)
 
+### merge overlap polygons
 
-def merging_overlaped_polygons(polygons, aoi_limit=0.3, intersec_ratio=0.75):
+def create_intersected_polygon(gpdpols, ref_pol, aoi_treshold = 0.3, invert = False):
+
+    pols_intersected = [gpdpols.id.values[i] for i in range(len(gpdpols['geometry'].values))
+            if gpdpols['geometry'].values[i].intersects(ref_pol.geometry.values[0])]
+    idstomerge = []
+    if len(pols_intersected) > 0:
+        
+        ### calculate the area of intersection of each polygon
+        area_per_iter, _ = calculate_AoI_fromlist(gpdpols, ref_pol.geometry.values[0], pols_intersected,invert)
+        
+
+        ### remove those areas with a low instersection area
+        idsintersected = np.array(pols_intersected)[(np.array(area_per_iter) > aoi_treshold)]
+
+        idstomerge = list(idsintersected) if len(idsintersected) else []
+        ### merge all polygons
+        polygonstomerge = [gpdpols.loc[gpdpols.id == y,].copy() for y in np.unique(idstomerge)]
+        polygonstomerge.append(ref_pol)
+
+        pol = best_polygon(polygonstomerge)
+    else:
+        pol = None
+
+        
+    return pol, list(np.unique(idstomerge))
+    
+
+def merging_overlaped_polygons(polygons, aoi_limit=0.4):
+
     df = polygons.copy()
+    ## create id
+    df['id'] = [i for i in range(polygons.shape[0])]
     listids = df.id.values
-    crs_s = polygons.crs
 
     listdef_pols = []
+    crs_s = polygons.crs
+    ## iterate until ther are no more polygons left
     while len(listids) > 0:
-
         rowit = listids[0]
-        refpol = df.loc[df.id == rowit,]
-        data_temp1 = df.loc[df.id != rowit,]
+        refpol = df.loc[df.id == rowit,].copy()
+        ## find which polygons are intersected and merged them
+        newp, idstodelete = create_intersected_polygon(df, refpol)
 
-        stest = [i for i in range(len(data_temp1['geometry'].values))
-                 if data_temp1['geometry'].values[i].intersects(refpol.geometry.values[0])]
-        if len(stest):
-            overlaps = data_temp1.id.values[np.array(stest)].tolist()
-            overlaps.append(rowit)
-        else:
-            overlaps = [rowit]
-
-        refpol = df.loc[df.id == rowit,]
-        data_temp1 = df.loc[df.id != rowit,]
-
-        if len(overlaps) > 1:
-
-            overlapsc = overlaps.copy()
-            overlapsc = [i for i in overlapsc if not i == rowit]
-
-            refpol = df.loc[df.id == rowit,].copy()
-
-            area_per_iter, _ = calculate_AoI_fromlist(df, refpol.geometry.values[0], overlapsc)
-
-            todelete = []
-
-            vals = np.array(overlapsc)[(np.array(area_per_iter) > aoi_limit)]
-            if len(vals):
-                vals = list(vals)
-                vals.append(rowit)
-                for z in vals:
-                    todelete.append(z)
-
-            testlist = []
-
-            for y in np.unique(todelete):
-                ref2 = df.loc[df.id == y,].copy()
-                testlist.append(ref2)
-
-            if len(todelete) == 0:
-                todelete = [rowit]
-                testlist = [df.loc[df.id == rowit,].copy()]
-
-            p = best_polygon(testlist)
-            overlaps2 = [i for i in np.array(overlaps) if not i in todelete]
-
-            scoren = pd.concat(testlist).score.max()
-            mergepol = gpd.GeoDataFrame({'pred': refpol.pred.values,
-                                         'score': [scoren],
-                                         'geometry': p,
-                                         'tile': refpol.tile.values,
-                                         'id': rowit},
+        if newp is not None:
+    
+            idstodelete.append(rowit)
+            newgpdpol = gpd.GeoDataFrame({'pred': refpol.pred.values,
+                                        'score': [df[df['id'].isin(idstodelete)].score.mean()],
+                                        'geometry': newp,
+                                        'id': rowit},
 
                                         crs=crs_s)
 
-            if len(overlaps2):
-                p1 = mergepol.geometry.values[0]
+            df = df[~df['id'].isin(np.unique(idstodelete))]
+            ### find new polygons which intersect the new polygon
+            # in this new scenario the intersected area must be bigger
+            newarea = aoi_limit *1.65 if aoi_limit *2<1 else 0.9
 
-                for z in overlaps2:
-                    p2 = df.loc[df.id == z,].copy()
-                    intersecarea = p1.intersection(p2.geometry.values[0]).area
+            newp, idstodelete = create_intersected_polygon(df, newgpdpol, newarea, invert=True)
+            if newp is not None:
+                
+                newgpdpol = gpd.GeoDataFrame({'pred': newgpdpol.pred.values,
+                                        'score': newgpdpol.score.values,
+                                        'geometry': newp,
+                                        'id': rowit},
+                                        crs=crs_s)
 
-                    if (intersecarea / p2.geometry.values[0].area) > intersec_ratio:
-                        todelete.append(z)
-
-                    elif (intersecarea / p1.area) > intersec_ratio:
-                        p = best_polygon([mergepol, p2])
-                        scoren = pd.concat(testlist).score.max()
-                        mergepol = gpd.GeoDataFrame({'pred': refpol.pred.values,
-                                                     'score': [scoren],
-                                                     'geometry': p,
-                                                     'tile': refpol.tile.values,
-                                                     'id': rowit},
-                                                    crs=crs_s)
-                        todelete.append(z)
-
-            listdef_pols.append(mergepol)
+                df = df[~df['id'].isin(idstodelete)]
 
         else:
-            todelete = [rowit]
-            listdef_pols.append(refpol)
+            newgpdpol = refpol
+            df = df[~df['id'].isin([rowit])]
 
-        df = df[~df['id'].isin(todelete)]
-
+        listdef_pols.append(newgpdpol)
         listids = df.id.values
-
+        
     return listdef_pols
 
 

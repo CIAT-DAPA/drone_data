@@ -42,7 +42,7 @@ def xyxy_predicted_box(img, yolo_model, device, half,
     img /= 255.0
     if len(img.shape) == 3:
         img = img[None]
-
+    
     pred = yolo_model(img, augment=False)[0]
     pred = non_max_suppression(pred, conf_thres, iou_thres, classes,
                                agnostic_nms, max_det=max_det)

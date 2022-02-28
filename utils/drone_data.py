@@ -362,9 +362,21 @@ class DroneData:
 
     def split_into_tiles(self, polygons=False, **kargs):
 
-        self.tiles_data = gf.split_xarray_data(self.drone_data, polygons=polygons, **kargs)
-        print("the image was divided into {} tiles".format(len(self.tiles_data)))
+        self._tiles_pols = gf.split_xarray_data(self.drone_data, polygons=polygons, **kargs)
+        
+        print("the image was divided into {} tiles".format(len(self._tiles_pols)))
+        
 
+    def tiles_data(self,id_tile):
+
+        if self._tiles_pols is not None:
+            window, transform = self._tiles_pols[id_tile]
+            xrmasked = gf.crop_using_windowslice(self.drone_data, window, transform)
+
+        else:
+            raise ValueError("Use split_into_tiles first")
+
+        return xrmasked
 
     def __init__(self,
                  inputpath,
@@ -379,6 +391,8 @@ class DroneData:
             self._bands = bands
 
         self._clusters = np.nan
+        self._tiles_pols = None
+
         if not multiband_image:
             self._files_path = get_files_paths(inputpath, self._bands)
 

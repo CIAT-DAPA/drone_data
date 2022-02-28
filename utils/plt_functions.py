@@ -3,6 +3,7 @@ import matplotlib
 from utils import data_processing
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
+import math
 
 def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_width=12, fig_height=8):
 
@@ -37,7 +38,7 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
     fig, ax = plt.subplots(figsize=(fig_sizex, fig_sizey))
 
     ax.imshow(threebanddata)
-
+    ax.invert_xaxis()
     ax.set_axis_off()
     plt.show()
 
@@ -97,7 +98,6 @@ def plot_2d_cloudpoints(clpoints, figsize = (10,6), xaxis = "latitude"):
     plt.show()
 
 
-
 def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
     
     n_clusters = np.unique(ncluster).max()+1
@@ -154,3 +154,68 @@ def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertax
                 axarr[i, j].invert_yaxis()
     plt.subplots_adjust(wspace=0, hspace=0, left=0, right=1, bottom=0, top=1)
     plt.show()
+
+
+def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None, 
+                          figsize = (20,20), scale = 255., 
+                          bands =['red','green','blue']):
+    
+    if ncols is None:
+        ncols = math.ceil(len(xarraydata.date) / nrows)
+    
+    fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
+    cont = 0
+    
+
+    for xi in range(nrows):
+        for yi in range(ncols):
+            if cont < len(xarraydata.date):
+                dataimg = xarraydata.isel(date=cont).copy()
+                if scale == "minmax":
+                    datatoplot = np.dstack([(dataimg[i].data - np.nanmin(dataimg[i].data)
+                    )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in bands])
+                else:
+                    datatoplot = np.dstack([dataimg[i].data for i in bands])/scale
+                axs[xi,yi].imshow(datatoplot)
+                axs[xi,yi].set_axis_off()
+                axs[xi,yi].set_title(np.datetime_as_string(
+                    xarraydata.date.values[cont], unit='D'))
+                axs[xi,yi].invert_xaxis()
+                cont+=1
+            else:
+                axs[xi,yi].axis('off')
+
+
+def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None, 
+                          figsize = (20,20), 
+                          band ='cluster',
+                          ncluster = None, 
+                          cmap = 'gist_ncar'):
+                          
+    if ncols is None:
+        ncols = math.ceil(len(xarraydata.date) / nrows)
+    
+    fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
+    cont = 0
+    if ncluster is None:
+        ncluster = len(np.unique(xarraydata['cluster'].values))
+
+    cmap = matplotlib.cm.get_cmap(cmap, ncluster)
+
+
+    for xi in range(nrows):
+        for yi in range(ncols):
+            if cont < len(xarraydata.date):
+                datatoplot = xarraydata.isel(date=cont)[band]
+
+                im = axs[xi,yi].imshow(datatoplot, cmap = cmap)
+                axs[xi,yi].set_axis_off()
+                axs[xi,yi].set_title(np.datetime_as_string(xarraydata.date.values[cont], unit='D'))
+                axs[xi,yi].invert_yaxis()
+                cont+=1
+            else:
+                axs[xi,yi].axis('off')
+
+    cbar_ax = fig.add_axes([.9, 0.1, 0.02, 0.7])
+    fig.colorbar(datatoplot, cax=cbar_ax)
+            
