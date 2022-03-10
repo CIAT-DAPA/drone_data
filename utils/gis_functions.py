@@ -134,6 +134,20 @@ def start_points(size, split_size, overlap=0.0):
 # adapted from
 # https://gis.stackexchange.com/questions/285499/how-to-split-multiband-image-into-image-tiles-using-rasterio
 
+def get_windows_from_polygon(ds, polygon):
+    """
+
+    :param ds: raster metadata
+    :param polygon: feature geometry
+    
+    """
+
+    bbox = from_polygon_2bbox(polygon)
+    window_ref = windows.from_bounds(*bbox,ds['transform'])
+    transform = windows.transform(window_ref, ds['transform'])
+
+    return [window_ref, transform]
+
 def get_tiles(ds, nrows=None, ncols=None, width=None, height=None, overlap=0.0):
     """
 
@@ -145,6 +159,7 @@ def get_tiles(ds, nrows=None, ncols=None, width=None, height=None, overlap=0.0):
     :param overlap: [0.0 - 1]
     :return:
     """
+    # get width and height from xarray attributes
     ncols_img, nrows_img = ds['width'], ds['height']
 
     if nrows is not None and ncols is not None:
@@ -179,8 +194,8 @@ def clip_xarraydata(xarraydata, gpdata, bands=None, buffer=None):
         xrtoclip = xarraydata[band].copy()
         xrtoclip = xrtoclip.rio.set_crs(xarraydata.attrs['crs'])
         listclipped.append(xrtoclip.rio.clip(geom, gpdataclip.crs))
+        clippedmerged = xarray.merge(listclipped)
 
-    clippedmerged = xarray.merge(listclipped)
     clippedmerged.attrs = xarraydata.attrs
     clippedmerged.attrs['nodata'] = xarraydata.attrs['nodata']
     tr = transform_fromxy(clippedmerged.x.values, clippedmerged.y.values,
@@ -303,7 +318,7 @@ def crop_using_windowslice(xr_data, window, transform):
     return xrwindowsel
 
 
-def split_xarray_data(xr_data, polygons=True, onlypolygons = False,**kargs):
+def split_xarray_data(xr_data, polygons=True, **kargs):
     """
 
     :param xr_data: xarray data with x and y coordinates names
@@ -381,6 +396,12 @@ def check_border(coord, sz):
     if (coord >= sz):
         coord = sz - 1
     return coord
+
+def from_polygon_2bbox(pol):
+    points = list(pol.exterior.coords)
+    x_coordinates, y_coordinates = zip(*points)
+
+    return [min(x_coordinates), min(y_coordinates), max(x_coordinates), max(y_coordinates)]
 
 
 def from_xyxy_2polygon(x1, y1, x2, y2):

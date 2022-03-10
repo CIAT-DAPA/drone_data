@@ -1,4 +1,5 @@
 import numpy as np
+from sqlalchemy import over
 import xarray
 import rasterio
 import os
@@ -366,6 +367,12 @@ class DroneData:
         
         print("the image was divided into {} tiles".format(len(self._tiles_pols)))
         
+    def clip_using_gpd(self, gpd_df, replace = True):
+        clipped = gf.clip_xarraydata(self.drone_data, gpd_df)
+        if replace:
+            self.drone_data = clipped
+        else:
+            return clipped
 
     def tiles_data(self,id_tile):
 

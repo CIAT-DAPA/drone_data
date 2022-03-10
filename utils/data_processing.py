@@ -126,11 +126,14 @@ def get_nan_idsfromarray(nparray):
     return np.unique(ids)
 
 
-def from_xarray_2array(xrdata, bands):
+def from_xarray_2array(xrdata, bands, normalize = False):
     data_list = []
     for i in bands:
         banddata = xrdata[i].data
         banddata[banddata == xrdata.attrs['nodata']] = np.nan
+        if normalize:
+            banddata = (banddata *255)/ np.nanmax(banddata)
+
         data_list.append(banddata)
 
     return np.array(data_list)
@@ -139,7 +142,9 @@ def from_xarray_2array(xrdata, bands):
 def from_xarray_2_rgbimage(xarraydata,
                            bands=None,
                            export_as_jpg=False,
-                           ouputpath=None):
+                           ouputpath=None, 
+                           normalize = True,
+                           newsize = None):
 
 
     if ouputpath is None:
@@ -151,12 +156,15 @@ def from_xarray_2_rgbimage(xarraydata,
     if bands is None:
         bands = np.array(list(xarraydata.keys()))[0:3]
 
-    data_tile = from_xarray_2array(xarraydata, bands)
+    data_tile = from_xarray_2array(xarraydata, bands, normalize)
 
     if data_tile.shape[0] == 3:
         data_tile = np.moveaxis(data_tile, 0, -1)
 
     image = Image.fromarray(data_tile.astype(np.uint8), 'RGB')
+    if newsize is not None:
+        image = image.resize(newsize)
+
     if export_as_jpg:
         Path(directory).mkdir(parents=True, exist_ok=True)
 
