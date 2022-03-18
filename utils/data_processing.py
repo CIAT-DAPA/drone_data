@@ -4,7 +4,7 @@ import json
 from PIL import Image
 import os
 from pathlib import Path
-
+import pandas as pd
 from dateutil.parser import parse
 import re
 
@@ -226,3 +226,32 @@ def resize_3dnparray( array,new_size=512):
                 resimg.append(np.hstack([tmp, np.zeros([new_size, (new_size-array.shape[2])])]))
 
     return np.array(resimg)
+
+def summary_xrbyquantiles(xrdata, quantiles = [.25,0.5,0.75]):
+
+    df = xrdata.to_dataframe()
+    df = df.groupby('date').quantile(quantiles)
+    if 'spatial_ref' in df.columns:
+        df = df.drop('spatial_ref',axis = 1)
+    df = df.reset_index()
+
+    df['idt'] = 0
+    df['id'] = df['date'].astype(str) + '_' + df['level_1'].astype(str)
+    
+    dflist = []
+    for i in list(xrdata.keys()):
+        dftemp = df.pivot(index='idt', columns='id', values=i).reset_index()
+        dftemp = dftemp.drop(['idt'], axis = 1)
+
+        dftemp.columns = i + '_d_' + dftemp.columns
+        dflist.append(dftemp)
+
+    return pd.concat(dflist, axis=1)
+    
+def get_vi_ts(df, npattern = ['ndvi']):
+
+    tsdata = df.copy()
+    for i in npattern:
+        tsdata = tsdata.filter(regex=i)
+
+    return np.expand_dims(tsdata.values,2)
