@@ -120,26 +120,37 @@ def from_cloudpoints_to_xarray(dfcloudlist,
     return mltxarray
 
 
-def calculate_leaf_angle(xarraydata, vector = (0,0,1)):
+def calculate_leaf_angle(xrdata, vector = (0,0,1), invert = False,heightvarname = 'z'):
+    
+    varnames = list(xrdata.keys())
+    if heightvarname is not None and heightvarname not in varnames:
+        raise ValueError('{} is not in the xarray'.format(heightvarname))
 
     anglelist = []
+    name4d = list(xrdata.dims.keys())[0]
 
-    for i in range(len(xarraydata.date)):
-        anglelist.append(get_angle_image_fromxarray(xarraydata.isel(date = i).copy(), vcenter=vector))
+    for dateoi in range(len(xrdata[name4d])):
+        anglelist.append(get_angle_image_fromxarray(
+            xrdata.isel({name4d:dateoi}).copy(), vcenter=vector,heightvarname = heightvarname))
     
     xrimg = xarray.DataArray(anglelist)
     xrimg.name = "leaf_angle"
-    xrimg = xrimg.rename({'dim_0': 'date', 'dim_1': 'y','dim_2':'x'})
-
-    xarraydata = xarraydata.merge(xrimg)
+    xrimg = xrimg.rename({'dim_0': list(xrdata.dims.keys())[0], 
+                          'dim_1': list(xrdata.dims.keys())[1],
+                          'dim_2': list(xrdata.dims.keys())[2]})
     
-    return xarraydata
+    xrdata = xrdata.merge(xrimg)
+    
+    if invert:
+        xrdata["leaf_angle"] = 90-xrdata["leaf_angle"]
+    
+    return xrdata
 
 
 
-def get_angle_image_fromxarray(xarradata, vcenter = (1,1,0)):
+def get_angle_image_fromxarray(xrdata, vcenter = (1,1,0),heightvarname = 'z'):
 
-    df = xarradata.to_dataframe().copy()
+    df = xrdata.to_dataframe().copy()
     
     ycoords = np.array([float("{}.{}".format(str(i[0]).split('.')[0][-3:], str(i[0]).split('.')[1])) for i in df.index.values])*100
     xcoords = np.array([float("{}.{}".format(str(i[1]).split('.')[0][-3:], str(i[1]).split('.')[1]))  for i in df.index.values])*100
@@ -148,12 +159,12 @@ def get_angle_image_fromxarray(xarradata, vcenter = (1,1,0)):
     ycenter = np.mean(ycoords)
 
     anglelist = []
-    for x,y,z in zip(xcoords,ycoords,xarradata.z.values.ravel()):
+    for x,y,z in zip(xcoords,ycoords,xrdata[heightvarname].values.ravel()):
         anglelist.append(math.degrees(calculate_angle_twovectors(vcenter , ((x-xcenter), (y-ycenter),z))))
 
     
-    anglelist = np.array(anglelist).reshape(xarradata.z.shape)
-    anglelist[xarradata.z.values == 0] = 0
+    anglelist = np.array(anglelist).reshape(xrdata[heightvarname].shape)
+    #anglelist[xrdata[heightvarname].values == 0] = 0
     return(anglelist)
 
 

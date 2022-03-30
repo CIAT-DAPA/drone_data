@@ -12,7 +12,9 @@ from utils.data_processing import assign_valuestoimg
 
 def pca_transform(data,
                   variancemin=0.5,
-                  export_pca=False):
+                  export_pca=False,
+                  sample = 'all',
+                  seed = 123):
     """
 
     :param data: numpy array
@@ -20,18 +22,24 @@ def pca_transform(data,
     :param export_pca: boolean
     :return: dictionary
     """
+    if sample == "all":
+        datatotrain = data
+    elif sample < data.shape[0]:
+        random.seed(seed)
+        random_indices = random.sample(range(data.shape[0]), sample)
+        datatotrain = data[random_indices]
 
     pca = PCA()
-    pca.fit_transform(data)
+    pca.fit_transform(datatotrain)
     # define the number of components through
     ncomponets = np.max(np.argwhere((pca.explained_variance_ * 100) > variancemin)) + 1
 
     #print("calculating pca with {} components".format(ncomponets))
     # calculate new pca
-    pca = PCA(n_components=ncomponets).fit(data)
-    scaleddata = pca.transform(data)
+    pca = PCA(n_components=ncomponets).fit(datatotrain)
+    data = pca.transform(data)
     # export data
-    output = {'pca_transformed': scaleddata}
+    output = {'pca_transformed': data}
 
     if export_pca:
         output['pca_model'] = pca
@@ -46,7 +54,8 @@ def kmeans_images(data,
                   seed=123,
                   pca=True,
                   export_pca=False,
-                  eigmin=0.3):
+                  eigmin=0.3,
+                  verbose = False):
     """
 
     :param data:
@@ -63,21 +72,23 @@ def kmeans_images(data,
         scaler = MinMaxScaler().fit(data)
 
     scaleddata = scaler.transform(data)
-    #print("scale done!")
+    if verbose:
+        print("scale done!")
+
     if pca:
-        pcaresults = pca_transform(scaleddata, eigmin, export_pca)
+        pcaresults = pca_transform(scaleddata, eigmin, export_pca, nrndsample)
         scaleddata = pcaresults['pca_transformed']
 
     if nrndsample == "all":
         datatotrain = scaleddata
     elif nrndsample < scaleddata.shape[0]:
-
         random.seed(seed)
         random_indices = random.sample(range(scaleddata.shape[0]), nrndsample)
         datatotrain = scaleddata[random_indices]
 
-    #print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
-    #                                                      datatotrain.shape[1]))
+    if verbose:
+        print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
+                                                              datatotrain.shape[1]))
 
     kmeansclusters = KMeans(n_clusters=nclusters,
                             random_state=seed).fit(datatotrain)

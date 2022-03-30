@@ -7,6 +7,40 @@ from skimage.transform import warp
 from PIL import Image, ImageOps
 from math import cos, sin, radians
 from skimage.draw import line_aa
+from scipy.spatial import ConvexHull
+import warnings
+
+def change_bordersvaluesasna(nptwodarray, bufferna):
+    intborderx = int(nptwodarray.shape[0]*(bufferna/100))
+    intbordery = int(nptwodarray.shape[1]*(bufferna/100))
+    nptwodarray[
+        (nptwodarray.shape[0]-intborderx):nptwodarray.shape[0],
+            :] = np.nan
+    nptwodarray[:,
+            (nptwodarray.shape[1]-intbordery):nptwodarray.shape[1]] = np.nan
+    nptwodarray[:,
+            0:intbordery] = np.nan
+    nptwodarray[0:intborderx,:] = np.nan
+
+    return nptwodarray
+
+def getcenter_from_hull(npgrayimage, buffernaprc = 15):
+    nonantmpimg = npgrayimage.copy()
+    if buffernaprc is not None:
+        nonantmpimg = change_bordersvaluesasna(nonantmpimg, bufferna=buffernaprc)
+
+    nonantmpimg[np.isnan(nonantmpimg)] = 0
+
+    coords = np.transpose(np.nonzero(nonantmpimg))
+    hull = ConvexHull(coords)
+
+    cx = np.mean(hull.points[hull.vertices,0])
+    cy = np.mean(hull.points[hull.vertices,1])
+
+    return int(cx),int(cy)
+
+
+
 
 def cross_image(im1, im2):
     # get rid of the color channels by performing a grayscale transform
@@ -71,6 +105,8 @@ def cartimg_topolar_transform(nparray, anglestep = 5, max_angle = 360, expand_ra
         imgarray = np.array(imgrotated)
         cpointy = int(imgarray.shape[0]/2)
         cpointx = int(imgarray.shape[1]/2)
+        if np.isnan(imgarray[cpointy,cpointx]):
+            cpointy, cpointx = getcenter_from_hull(imgarray)
 
         valuesacrossy = []
         
@@ -107,9 +143,24 @@ def cartimg_topolar_transform(nparray, anglestep = 5, max_angle = 360, expand_ra
 
 
 def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
+    
+    xborder = nparray.shape[1]
+    yborder = nparray.shape[0]
+    
     center_x = int(nparray.shape[1]/2)
     center_y = int(nparray.shape[0]/2)
-    modimg = nparray.copy()
+
+    origimg = nparray.copy()
+    if np.isnan(origimg[center_y,center_x]):
+        center_y, center_x = getcenter_from_hull(origimg)
+    if np.isnan(origimg[center_y,center_x]):
+        warnings.warn("there are no data in the image center")
+        origimg[center_y,center_x] = 0
+
+    modimg = np.empty(nparray.shape)
+    modimg[:] = np.nan
+
+    #mxanglerad = radians(360)
     for angle in range(0,max_angle,anglestep):
 
         anglerad = radians(angle)
@@ -122,16 +173,22 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
         countna = 0 
         for i,j in zip(rr,cc):
             #print(i,j,m)
-            if i < (center_y*2) and j < (center_x*2) and j >= 0 and i >=0:
+            if i < (nparray.shape[1]) and j < (nparray.shape[0]) and j >= 0 and i >=0:
                          
-                if countna>nathreshhold:
-                    modimg[i,j] = np.nan
-
-                if np.isnan(modimg[i,j]):
-                    countna+=1
-                else:
-                    countna = 0
+                if countna>=nathreshhold:
+                    #modimg[i,j] = np.nan
+                    break
+                try:
+                    if np.isnan(origimg[i,j]):
+                        countna+=1
+                    else:
+                        modimg[i,j] = origimg[i,j]
+                        countna = 0
+                except:
+                    break
             else:
                 break
     
     return modimg
+
+

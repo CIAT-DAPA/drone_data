@@ -23,6 +23,10 @@ import affine
 from skimage.registration import phase_cross_correlation
 
 from utils.image_functions import phase_convolution,register_image_shift
+from utils.image_functions import radial_filter
+from utils.image_functions import cartimg_topolar_transform
+
+from sklearn.impute import KNNImputer
 
 # check it
 
@@ -694,3 +698,150 @@ def stack_as4dxarray(xarraylist, dateslist=None, sizemethod='max'):
     mltxarray.attrs['count'] = len(list(mltxarray.keys()))
     return mltxarray
 
+
+# filter
+
+
+def filter_3Dxarray_usingradial(xrdata, **kargs):
+    
+    varnames = list(xrdata.keys())
+    
+    imgfilteredperdate = []
+    for i in range(len(xrdata.date)):
+        indlayer = xrdata.isel(date = i).copy()
+        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+        indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+        imgfilteredperdate.append(indlayer)
+    
+    if len(imgfilteredperdate)>0:
+        name4d = list(xrdata.dims.keys())[0]
+
+        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
+        mltxarray[name4d] = xrdata[name4d].values
+    else:
+        indlayer = xrdata.copy()
+        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+        mltxarray = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+
+    return mltxarray
+
+
+# impute data 
+def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn',nanvalue = None,**kargs):
+
+    varnames = list(xrdata.keys())
+    if nabandmaskname is not None and nabandmaskname not in varnames:
+        raise ValueError('{} is not in the xarray'.format(nabandmaskname))
+    if bandstofill is not None:
+        if type(bandstofill) is list:
+            namesinlist = [i in varnames for i in bandstofill]
+            if np.sum(namesinlist) != len(bandstofill):
+                raise ValueError('{} is not in the xarray'.format(
+                    np.array(bandstofill)[np.logical_not(namesinlist)]))  
+    if bandstofill is None:
+        bandstofill = varnames
+
+    name4d = list(xrdata.dims.keys())[0]
+    imgfilled = []
+    for dateoi in range(len(xrdata[name4d])):
+        
+        if nabandmaskname is not None:
+            filltestref = xrdata.isel({name4d:dateoi})[nabandmaskname].copy()
+            mask =np.isnan(filltestref.values)
+
+        else:
+            mask = None
+        
+        xrfilled = xarray_imputation(xrdata.isel({name4d:dateoi}).copy(), 
+                                 bands = bandstofill,
+                                 namask=mask,imputation_method = method,
+                                 nanvalue = nanvalue,**kargs)
+
+        imgfilled.append(xrfilled)
+
+    imgfilled = xarray.concat(imgfilled, dim=name4d)
+    imgfilled[name4d] = xrdata[name4d].values
+    imgfilled.attrs['count'] = len(list(imgfilled.keys()))
+
+    return imgfilled
+
+def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'knn', nanvalue = None,**kargs):
+    dummylayer = False
+    if imputation_method == 'knn':
+        impmethod =  KNNImputer(**kargs)
+
+    if bands is None:
+        bands = list(xrdata.keys())
+
+    if namask is None:
+        imgsize= xrdata[bands[0]].values.shape
+        namask = np.ones((imgsize[0]+20,imgsize[1]+20), dtype=bool)*False
+        dummylayer = True
+
+    for spband in bands:
+
+        arraytoimput = xrdata[spband].copy().values
+
+        if arraytoimput.shape[0] != namask.shape[0]:
+            namaskc = np.zeros(namask.shape)
+            namaskc[10:-10,10:-10] = arraytoimput
+        else:
+            namaskc = arraytoimput
+        namaskc[namask] = 0
+        namaskc = impmethod.fit_transform(namaskc)
+        if dummylayer:
+            namaskc[namask] = np.nan
+            arraytoimput = namaskc[10:-10,10:-10]
+            
+        elif arraytoimput.shape[0] != namaskc.shape[0] or arraytoimput.shape[1] != namaskc.shape[1]:
+            
+            
+            difxaxis = arraytoimput.shape[0] - namaskc.shape[0]
+            difyaxis = arraytoimput.shape[1] - namaskc.shape[1]
+            maxarray = np.empty(arraytoimput.shape)
+            maxarray[:,:] = np.nan
+            maxarray[:(maxarray.shape[0]-difxaxis),
+                     :(maxarray.shape[1]-difyaxis)] = namaskc
+            
+            namask[maxarray.shape[0]-difxaxis:maxarray.shape[0],
+                   (maxarray.shape[1]-difyaxis):maxarray.shape[1]] = True
+
+            maxarray[namask] = np.nan
+            arraytoimput = maxarray
+        else:
+            namaskc[namask] = np.nan
+            arraytoimput = namaskc
+
+        if nanvalue is not None:
+            arraytoimput[arraytoimput == nanvalue] = np.nan
+
+        xrdata[spband].values  = arraytoimput
+    
+    return xrdata
+
+
+
+
+def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, confidence = 0.95, refband = None):
+    bandnames = list(xrdata.keys())
+    if refband is None:
+        refband = bandnames[0]
+    ## get from the center to the leaf tip
+    refimg = xrdata[refband].copy().values
+    distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
+
+    ## take 
+    borderdistances = []
+    for i in range(len(distvector)):
+        borderdistances.append(distvector[i][-1:])
+    
+    x = np.array(borderdistances).flatten()
+    poslongestdistance = int(np.percentile(x,100*(1-(1-confidence)/2)))
+
+    mayoraxisref = int(refimg.shape[1]/2) if refimg.shape[1] >= refimg.shape[0] else int(refimg.shape[0]/2)
+    diagnonal = int(mayoraxisref / math.cos(math.radians(45)))
+    mayoraxisref = int(diagnonal) if diagnonal >= mayoraxisref else mayoraxisref
+    
+    poslongestdistance = poslongestdistance if poslongestdistance <= mayoraxisref else mayoraxisref
+
+    return [poslongestdistance, x, imgvalues]

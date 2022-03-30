@@ -38,7 +38,8 @@ def assign_valuestoimg(data, height, width, na_indexes=None):
                      width, dtype='f')
 
     if na_indexes is not None:
-        ids_notnan = np.delete(ids_notnan, na_indexes, axis=0)
+        if len(na_indexes)>0:
+            ids_notnan = np.delete(ids_notnan, na_indexes, axis=0)
 
     climg[list(ids_notnan)] = data
     #
@@ -196,9 +197,12 @@ def from_xarray_to_table(xrdata, nodataval=None,
                             npdata.shape[1] * npdata.shape[2])
 
     idsnan = get_nan_idsfromarray(npdata)
-    if remove_nan:
-        npdata = np.delete(npdata.T, idsnan, axis=0)
 
+    if remove_nan:
+        if len(idsnan)>0:
+            npdata = np.delete(npdata.T, idsnan, axis=0)
+        else:
+            npdata = npdata.T
     return [npdata, idsnan]
 
 
@@ -227,16 +231,16 @@ def resize_3dnparray( array,new_size=512):
 
     return np.array(resimg)
 
-def summary_xrbyquantiles(xrdata, quantiles = [.25,0.5,0.75]):
+def summary_xrbyquantiles(xrdata, quantiles = [.25,0.5,0.75], idcolum = 'date'):
 
     df = xrdata.to_dataframe()
-    df = df.groupby('date').quantile(quantiles)
+    df = df.groupby(idcolum).quantile(quantiles)
     if 'spatial_ref' in df.columns:
         df = df.drop('spatial_ref',axis = 1)
     df = df.reset_index()
 
     df['idt'] = 0
-    df['id'] = df['date'].astype(str) + '_' + df['level_1'].astype(str)
+    df['id'] = df[idcolum].astype(str) + '_' + df['level_1'].astype(str)
     
     dflist = []
     for i in list(xrdata.keys()):

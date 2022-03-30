@@ -19,6 +19,20 @@ from utils import gis_functions as gf
 
 import re
 
+VEGETATION_INDEX = {# rgb bands
+'grvi': '(green - red)/(green + red)',
+'mgrvi': '((green*green) - (red*red))/((green*green) + (red*red))',
+'rgbvi': '((green*green) - (blue*red))/ ((green*green) + (blue*red))',
+ # nir indexes
+'ndvi': '(nir - red)/(nir + red)',
+'ndre': '(nir - edge)/(nir + edge)',
+'gndvi': '(nir - green)/(nir + green)',
+'regnvi': '(edge - green)/(edge + green)',
+'reci': '(nir / edge) - 1',
+'negvi': '((nir*nir) - (edge*green))/ ((nir*nir) + (edge*green))'}
+
+
+
 def drop_bands(xarraydata, bands):
     for i in bands:
         xarraydata = xarraydata.drop(i)
@@ -76,9 +90,12 @@ def get_files_paths(path, bands):
 def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
 
     variable_names = list(xarraydata.keys())
+    if expression is None and vi in list(VEGETATION_INDEX.keys()):
+        expression = VEGETATION_INDEX[vi]
+
     namask = xarraydata.attrs['nodata']
     # modify expresion finding varnames
-    symbolstoremove = ['*','-','+','/',')','(',' ','[',']']
+    symbolstoremove = ['*','-','+','/',')','.','(',' ','[',']']
     test = expression
     for c in symbolstoremove:
         test = test.replace(c, '-')
@@ -86,12 +103,13 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
     test = re.sub('\d', '-', test)
     varnames = [i for i in np.unique(np.array(test.split('-'))) if i != '']
     for i, varname in enumerate(varnames):
+        
         if varname in variable_names:
             exp = (['listvar[{}]'.format(i), varname])
             expression = expression.replace(exp[1], exp[0])
         else:
             raise ValueError('there is not a variable named as {}'.format(varname))
-    
+
     listvar = []
     if vi not in variable_names:
 
@@ -100,7 +118,7 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
                 varvalue = xarraydata[varname].data
                 varvalue[varvalue == namask] = np.nan
                 listvar.append(varvalue)
-
+        
         vidata = eval(expression)
             
         if label is None:
