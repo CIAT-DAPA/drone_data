@@ -176,12 +176,22 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                     )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in bands])
                 else:
                     datatoplot = np.dstack([dataimg[i].data for i in bands])/scale
-                axs[xi,yi].imshow(datatoplot)
-                axs[xi,yi].set_axis_off()
-                axs[xi,yi].set_title(np.datetime_as_string(
-                    xarraydata.date.values[cont], unit='D'))
-                axs[xi,yi].invert_xaxis()
-                cont+=1
+                if nrows > 1:
+                    axs[xi,yi].imshow(datatoplot)
+                    axs[xi,yi].set_axis_off()
+                    axs[xi,yi].set_title(np.datetime_as_string(
+                        xarraydata.date.values[cont], unit='D'))
+                    axs[xi,yi].invert_xaxis()
+
+                    cont+=1
+                else:
+                    axs[yi].imshow(datatoplot)
+                    axs[yi].set_axis_off()
+                    axs[yi].set_title(np.datetime_as_string(
+                        xarraydata.date.values[yi], unit='D'))
+                    axs[yi].invert_xaxis()
+                    cont = yi+1
+                
             else:
                 axs[xi,yi].axis('off')
 

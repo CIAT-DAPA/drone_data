@@ -79,7 +79,10 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
     df.columns = ['q_{}'.format(i) for i in quantiles]
     df = df.unstack().reset_index()
     df.columns = ['quantnames', 'date', 'value']
-    df['metric'] = [varname + '_'] + df['quantnames'] 
+    
+    #times = ['_t' + str(list(np.unique(df.date)).index(i)) for i in df.date.values]
+
+    df['metric'] = [varname + '_'] + df['quantnames']
 
     return df.drop(['quantnames'], axis = 1)
 
@@ -98,7 +101,7 @@ def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z',
 
     if method == 'leaf_angle' and leaf_anglename in list(xrdata.keys()):
         xrfiltered = xrdata.where((xrdata[leaf_anglename])>leaf_anglethresh,np.nan)[heightvarname].copy()
-    else:
+    elif (method == 'window'):
         pr = reduction_perc/100
         mshape0 = int(xrdata[heightvarname].values.shape[1]*pr/2)
         mshape1 = int(xrdata[heightvarname].values.shape[2]*pr/2)
@@ -144,7 +147,7 @@ class Phenomics:
 
     def check_dfphen_availability(self, phen = 'plant_height'):
         """
-        a functions to chek if the pehnotype was already calculated, otherwise it
+        a functions to check if the pehnotype was already calculated, otherwise it
         will calculate the metric using default parameters
         ...
         Parameters
@@ -174,8 +177,8 @@ class Phenomics:
             if phen == 'leaf_area':
                 self.leaf_area()
 
-            if phen == 'rossete_area':
-                self.rossete_area()
+            if phen == 'rosette_area':
+                self.rosette_area()
 
             if phen == 'convex_hull':
                 self.convex_hull_area()
@@ -204,7 +207,7 @@ class Phenomics:
     def earlystages_areas(self, refband = 'red', scalefactor = 100):
 
         dfla = self.leaf_area(refband = refband,scalefactor=scalefactor)
-        dfra =self.rossete_area(refband = refband,scalefactor=scalefactor)
+        dfra =self.rosette_area(refband = refband,scalefactor=scalefactor)
         dfch = self.convex_hull_area(refband = refband,scalefactor=scalefactor)
 
         return pd.concat([dfla,
@@ -250,7 +253,9 @@ class Phenomics:
         
         return self._phenomic_summary['convex_hull']
 
-    def convex_hull_plot(self, refband = 'red', scalefactor = 100, figsize = (20,12)):
+    def convex_hull_plot(self, refband = 'red', scalefactor = 100, figsize = (20,12),
+                          saveplot = False,
+                          outputpath = None):
 
         name4d = list(self.xrdata.dims.keys())[0]
 
@@ -278,10 +283,17 @@ class Phenomics:
             ax[doi].invert_xaxis()
             ax[doi].set_axis_off()
             ax[doi].set_title("CH area\n{} (cm2)".format(np.round(area,2)), size=28, color = 'r')
+        
+        if saveplot:
+            if outputpath is None:
+                outputpath = 'tmp.png'
+            
+            fig.savefig(outputpath)
+            plt.close()
 
 
 
-    def rossete_area(self, refband='red',scalefactor = 100 ,**kargs):
+    def rosette_area(self, refband='red',scalefactor = 100 ,**kargs):
         
         xrdata = self.xrdata.copy()
         name4d = list(xrdata.dims.keys())[0]
@@ -290,20 +302,25 @@ class Phenomics:
         distdates = []
         for doi in range(len(self.xrdata.date.values)):
             initimageg = xrdata.isel(date =doi).copy()
-            leaflongestdist,_,_ = centerto_edgedistances_fromxarray(initimageg, anglestep=2, 
+            leaflongestdist,_ = centerto_edgedistances_fromxarray(initimageg, anglestep=2, 
                                                                         nathreshhold = 3, refband = refband)
             distdates.append(
                 leaflongestdist)
 
-        self._phenomic_summary['rossete_area'] = pd.DataFrame(
+        self._phenomic_summary['rosette_area'] = pd.DataFrame(
             {name4d:self.xrdata[name4d].values,
                       'value':[i*i*pixelsize*pixelsize* math.pi for i in distdates],
-                      'metric': 'rossete_area'})
+                      'metric': 'rosette_area'})
         
-        return self._phenomic_summary['rossete_area']
+        return self._phenomic_summary['rosette_area']
 
 
-    def rossete_area_plot(self, refband = 'red', scalefactor = 100, figsize = (20,12)):
+    def rosette_area_plot(self, 
+                          refband = 'red', 
+                          scalefactor = 100, 
+                          figsize = (20,12),
+                          saveplot = False,
+                          outputpath = None):
 
         name4d = list(self.xrdata.dims.keys())[0]
         fig, ax = plt.subplots(figsize=figsize, 
@@ -321,10 +338,10 @@ class Phenomics:
         for doi in range(len(self.xrdata.date.values)):
             initimageg = xrdata.isel(date =doi).copy()
 
-            if np.isnan(initimageg[refband].values[yp,xp]):
-                yp, xp = getcenter_from_hull(initimageg[refband].copy().values)
+            #if np.isnan(initimageg[refband].values[yp,xp]):
+            #    yp, xp = getcenter_from_hull(initimageg[refband].copy().values)
 
-            leaflongestdist,_,_ = centerto_edgedistances_fromxarray(initimageg, anglestep=2,
+            leaflongestdist,( xp,yp) = centerto_edgedistances_fromxarray(initimageg, anglestep=2,
                                     nathreshhold = 3, refband = refband)
                                   
             area = leaflongestdist*leaflongestdist*pixelsize*pixelsize* math.pi
@@ -341,8 +358,14 @@ class Phenomics:
 
             ax[doi].invert_xaxis()
             ax[doi].set_axis_off()
-            ax[doi].set_title("Rossete area\n{} (cm2)".format(np.round(area,2)), size=28, color = 'r')
+            ax[doi].set_title("Rosette area\n{} (cm2)".format(np.round(area,2)), size=28, color = 'r')
 
+        if saveplot:
+            if outputpath is None:
+                outputpath = 'tmp.png'
+            
+            fig.savefig(outputpath)
+            plt.close()
 
     def plot_spindexes(self, spindexes = SPECTRAL_METRICS, **kargs):
         df = self.splectral_reflectance(spindexes)

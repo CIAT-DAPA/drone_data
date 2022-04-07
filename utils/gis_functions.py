@@ -24,7 +24,7 @@ from skimage.registration import phase_cross_correlation
 
 from utils.image_functions import phase_convolution,register_image_shift
 from utils.image_functions import radial_filter
-from utils.image_functions import cartimg_topolar_transform
+from utils.image_functions import cartimg_topolar_transform,border_distance_fromgrayimg
 
 from sklearn.impute import KNNImputer
 
@@ -643,17 +643,56 @@ def expand_1dcoords(listvalues, newdim):
 
 
 #### reszie single xarray variables
+def resize_4dxarray(xrdata, new_size = None, flip = False):
+    """
+    a functions to resize a 4 dimesionals (date, x, y, variables) xrarray data  
 
-def rezize_3dxarray(xrdata, new_size):
+    ----------
+    Parameters
+    xradata : xarray wich contains all information wuth sizes x, y, variables
+    new_size: tuple, with new size in x and y
+    flip: boolean, flip the image
+    ----------
+    Returns
+    xarray:
+    """
+    if new_size is None:
+        raise ValueError("new size must be given")
+
+    name4d = list(xrdata.dims.keys())[0]
+    #ydim, xdim = list(xrdata.dims.keys())[1],list(xrdata.dims.keys())[2]
+    imgresized = []
+    for dateoi in range(len(xrdata[name4d])):
+        imgresized.append(rezize_3dxarray(xrdata.isel(date = dateoi).copy(), new_size, flip=flip))
+
+    imgresized = xarray.concat(imgresized, dim=name4d)
+    imgresized[name4d] = xrdata[name4d].values
+    imgresized.attrs['count'] = len(list(imgresized.keys()))
+
+    return imgresized
+
+def rezize_3dxarray(xrdata, new_size, flip=True):
+    """
+    a functions to resize a 3 dimesional xrdata 
+
+    ----------
+    Parameters
+    xradata : xarray wich contains all information wuth sizes x, y, variables
+    new_size: tuple, with new size in x and y
+    ----------
+    Returns
+    xarray:
+    """
     newx, newy = new_size
     varnames = list(xrdata.keys())
     dims2d = list(xrdata.dims)
     listnpdata = []
 
     for i in range(len(varnames)):
-        image = Image.fromarray(xrdata[varnames[i]].values)
+        image = Image.fromarray(xrdata[varnames[i]].values.copy())
         imageres = image.resize((newx, newy), Image.BILINEAR)
-        imageres = ImageOps.flip(imageres)
+        if flip:
+            imageres = ImageOps.flip(imageres)
         listnpdata.append(np.array(imageres))
 
     newyvalues = expand_1dcoords(xrdata[dims2d[0]].values, newy)
@@ -669,7 +708,9 @@ def rezize_3dxarray(xrdata, new_size):
     return xrdata
 
 
-def stack_as4dxarray(xarraylist, dateslist=None, sizemethod='max'):
+def stack_as4dxarray(xarraylist, 
+                     dateslist=None, 
+                     sizemethod='max'):
     if type(xarraylist) is not list:
         raise ValueError('Only list xarray are allowed')
 
@@ -828,20 +869,24 @@ def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, c
         refband = bandnames[0]
     ## get from the center to the leaf tip
     refimg = xrdata[refband].copy().values
-    distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
-
+    #distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
+    refimg[np.logical_not(np.isnan(refimg))] = 255
+    refimg[np.isnan(refimg)] = 0
+    refimg = refimg.astype(np.uint8)
+    c,r = border_distance_fromgrayimg(refimg)
     ## take 
-    borderdistances = []
-    for i in range(len(distvector)):
-        borderdistances.append(distvector[i][-1:])
+    #borderdistances = []
+    #for i in range(len(distvector)):
+    #    borderdistances.append(distvector[i][-1:])
     
-    x = np.array(borderdistances).flatten()
-    poslongestdistance = int(np.percentile(x,100*(1-(1-confidence)/2)))
+    #x = np.array(borderdistances).flatten()
+    #poslongestdistance = int(np.percentile(x,100*(1-(1-confidence)/2)))
 
-    mayoraxisref = int(refimg.shape[1]/2) if refimg.shape[1] >= refimg.shape[0] else int(refimg.shape[0]/2)
-    diagnonal = int(mayoraxisref / math.cos(math.radians(45)))
-    mayoraxisref = int(diagnonal) if diagnonal >= mayoraxisref else mayoraxisref
+    #mayoraxisref = int(refimg.shape[1]/2) if refimg.shape[1] >= refimg.shape[0] else int(refimg.shape[0]/2)
+    #diagnonal = int(mayoraxisref / math.cos(math.radians(45)))
+    #mayoraxisref = int(diagnonal) if diagnonal >= mayoraxisref else mayoraxisref
     
-    poslongestdistance = poslongestdistance if poslongestdistance <= mayoraxisref else mayoraxisref
+    #poslongestdistance = poslongestdistance if poslongestdistance <= mayoraxisref else mayoraxisref
 
-    return [poslongestdistance, x, imgvalues]
+    #return [poslongestdistance, x]
+    return [r,c]

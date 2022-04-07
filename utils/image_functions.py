@@ -9,6 +9,8 @@ from math import cos, sin, radians
 from skimage.draw import line_aa
 from scipy.spatial import ConvexHull
 import warnings
+import cv2 as cv
+
 
 def change_bordersvaluesasna(nptwodarray, bufferna):
     intborderx = int(nptwodarray.shape[0]*(bufferna/100))
@@ -40,7 +42,21 @@ def getcenter_from_hull(npgrayimage, buffernaprc = 15):
     return int(cx),int(cy)
 
 
+def border_distance_fromgrayimg(grimg):
+    contours, _ = cv.findContours(grimg, 
+                                  cv.RETR_TREE,
+                                  cv.CHAIN_APPROX_SIMPLE)
+                                  
+    centers = [None]*len(contours)
+    radius = [None]*len(contours)
+    for i, c in enumerate(contours):
+        contours_poly = cv.approxPolyDP(c, 3, True)
+        centers[i], radius[i] = cv.minEnclosingCircle(contours_poly)
 
+    centers = centers[np.where(radius == np.max(radius))[0][0]]
+    radius = radius[np.where(radius == np.max(radius))[0][0]]
+
+    return centers,radius
 
 def cross_image(im1, im2):
     # get rid of the color channels by performing a grayscale transform
@@ -153,6 +169,7 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
     origimg = nparray.copy()
     if np.isnan(origimg[center_y,center_x]):
         center_y, center_x = getcenter_from_hull(origimg)
+
     if np.isnan(origimg[center_y,center_x]):
         warnings.warn("there are no data in the image center")
         origimg[center_y,center_x] = 0
@@ -173,7 +190,7 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
         countna = 0 
         for i,j in zip(rr,cc):
             #print(i,j,m)
-            if i < (nparray.shape[1]) and j < (nparray.shape[0]) and j >= 0 and i >=0:
+            if i < (nparray.shape[0]) and j < (nparray.shape[1]) and j >= 0 and i >=0:
                          
                 if countna>=nathreshhold:
                     #modimg[i,j] = np.nan
