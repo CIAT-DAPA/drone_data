@@ -35,6 +35,48 @@ VEGETATION_INDEX = {# rgb bands
 'savi':  '((nir - red_ms) / (nir + red_ms + 0.5)) * (1.5)'}
 
 
+def mergemissions_singledate( roi,capturedates = None, 
+                              rgb_path = None, ms_path=None, xyz_path=None, 
+                              exportrgb =True, 
+                              exportxyz = True, 
+                              rgb_asreference = True):
+    
+    
+    lenmission = 0   
+    suffix = ""
+    if rgb_path is not None:
+        if capturedates is not None:
+            capturedates = [find_date_instring(rgb_path[i]) for i in range(len(rgb_path))]
+        if exportrgb:
+            suffix +="rgb_"
+        
+    if ms_path is not None:
+        if capturedates is not None:
+            capturedates = [find_date_instring(ms_path[i]) for i in range(len(ms_path))]
+        suffix +="ms_"
+        
+
+    if xyz_path is not None:
+        if capturedates is not None:
+            capturedates = [find_date_instring(xyz_path[i]) for i in range(len(xyz_path))]
+        suffix +="xyz_"
+        
+
+    if suffix == "":
+        raise ValueError("There are no any mission to process")
+    
+    
+    rgbmsz = mergealldata(roi, lenmission, rgb_path, ms_path, xyz_path, 
+                        exportrgb =exportrgb, exportxyz=exportxyz,rgb_asreference = rgb_asreference)
+
+
+    datesnames = [datetime.strptime(m,'%Y%m%d') for m in capturedates]
+    rgbmsz = rgbmsz.expand_dims(dim='date', axis=0)
+    rgbmsz['date'] = datesnames
+    rgbmsz['count'] = len(list(rgbmsz.keys()))
+        
+    return rgbmsz,suffix 
+
 
 def run_parallel_mergemissions_perpol(j, SHP_PATH, rgb_path = None, ms_path=None, xyz_path=None, output_path=None, 
                         featurename =None, exportrgb =True, exportxyz = True, rgb_asreference = True):

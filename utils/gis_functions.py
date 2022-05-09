@@ -890,3 +890,38 @@ def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, c
 
     #return [poslongestdistance, x]
     return [r,c]
+
+
+def get_minmax_fromlistxarray(xrdatalist):
+    """
+    get nin max values from a list of xarray
+
+    ----------
+    Parameters
+    xrdatalist : list of xarrays
+    ----------
+    Returns
+    min_dict: a dictionary which contains the minimum values per band
+    max_dict: a dictionary which contains the maximum values per band
+    """
+    if not (type(xrdatalist) == list):
+        raise ValueError('xrdatalist must be a list of xarray')
+
+    name4d = list(xrdatalist[0].dims.keys())[0]    
+    min_dict = dict(zip(list(xrdatalist[0].keys()), [9999]*len(list(xrdatalist[0].keys()))))
+    max_dict = dict(zip(list(xrdatalist[0].keys()), [-9999]*len(list(xrdatalist[0].keys()))))
+
+    for idpol in range(len(xrdatalist)):
+        for varname in list(xrdatalist[idpol].keys()):
+            minval = min_dict[varname]
+            maxval = max_dict[varname]
+            for i in range(xrdatalist[idpol].dims[name4d]):
+                refvalue = xrdatalist[idpol][varname].isel({name4d:i}).values
+                if minval>np.nanmin(refvalue):
+                    min_dict[varname] = np.nanmin(refvalue)
+                    minval = np.nanmin(refvalue)
+                if maxval<np.nanmax(refvalue):
+                    max_dict[varname] = np.nanmax(refvalue)
+                    maxval = np.nanmax(refvalue)
+
+    return min_dict, max_dict

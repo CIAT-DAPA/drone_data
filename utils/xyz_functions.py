@@ -7,6 +7,7 @@ import pandas as pd
 
 import linecache
 import xarray
+import os
 
 from scipy.stats import gaussian_kde
 
@@ -19,19 +20,31 @@ from utils.plt_functions import plot_2d_cloudpoints
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
 
     cond1 = True
+    idx = 0
     idx2 = step
     while cond1:
-        cond2 = float(linecache.getline(file_path,idx2).split(' ')[0])>=(bb[0] - buffer)
-        if cond2:
-            cond1 =float(linecache.getline(file_path,idx2).split(' ')[0])<=(bb[2] + buffer)
-        else:
-            idx = idx2
-        
-        idx2+=step
-    idxdif = idx2 - idx
+        try:
+            fl = linecache.getline(file_path,idx2).split(' ')[0]
+            cond2 = float(fl)>=(bb[0] - buffer)
+            if cond2:
+                cond1 =float(fl)<=(bb[2] + buffer)
+            else:
+                idx = idx2
+            
+            idx2+=step
+        except:
+            idx2 = 0
+            cond1 = False
+    if idx != 0:
+        idxdif = idx2 - idx
+    else:
+        idxdif=0
+
+    if np.abs(idxdif) <2000:
+        idxdif=0
+
     linecache.clearcache()
     return ([idx, idxdif])
-
 
 
 def valid(chunks, bb, buffer= 0.0):
@@ -46,11 +59,27 @@ def valid(chunks, bb, buffer= 0.0):
             yield chunk.loc[mask]
             break
 
-def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000):
-
-    firstrow,chunksize = getchunksize_forxyzfile(file_path, bb,buffer, step)
+def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz'):
+    data = True
+    file_pathfn = os.listdir(file_path)
+    xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
     
-    chunks = pd.read_csv(file_path,skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
+    count = 0
+    while data:
+        
+        firstrow,chunksize = getchunksize_forxyzfile(os.path.join(file_path,xyzfilenames[count]), bb,buffer, step)
+        
+
+        if chunksize>0:
+            data = False
+        else:
+            count +=1
+        if count >len(xyzfilenames):
+           data = False
+           raise ValueError('Check the coordinates, there is no intesection in the file')
+        
+
+    chunks = pd.read_csv(os.path.join(file_path,xyzfilenames[count]),skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
     df = pd.concat(valid(chunks, bb, buffer))
     
     return df
@@ -181,11 +210,14 @@ def calculate_angle_twovectors(v1,v2):
     dot_product = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     return( np.arccos(dot_product))
 
-def clip_cloudpoints_as_gpd(file_name, bb, crs, buffer = 0.1, step = 100):
+def clip_cloudpoints_as_gpd(file_name, bb, crs, buffer = 0.1, step = 100, ext = '.xyz'):
     
+
     dfcl = read_cloudpointsfromxyz(file_name,  
                             bb.bounds, 
-                            buffer = buffer,step = step)
+                            buffer = buffer,step = step,
+                            ext =ext)
+
 
     dfcl = gpd.GeoDataFrame(dfcl, geometry=gpd.points_from_xy(
                                     dfcl.iloc[:,0], dfcl.iloc[:,1]), crs=crs)
@@ -239,16 +271,19 @@ class CloudPoints:
                     sp_res = 0.01,
                     multiprocess = False,
                     nworkers = 2, 
-                    verbose = False):
+                    verbose = False,
+                    ext = '.xyz'):
 
         self._crs =  crs     
         self.boundaries = gpdpolygon.bounds
         self.variables_names = variables
 
+        
 
         if type(xyzfile) != list:
             xyzfile = [xyzfile]
 
+        
 
         cllist = []
         if multiprocess:
