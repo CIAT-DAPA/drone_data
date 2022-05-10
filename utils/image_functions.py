@@ -1,6 +1,7 @@
 import scipy.signal
 import numpy as np
-
+import random
+from scipy import ndimage
 from skimage.transform import SimilarityTransform
 from skimage.transform import warp
 
@@ -209,3 +210,147 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
     return modimg
 
 
+
+## data augmentation
+
+#https://keras.io/examples/vision/3D_image_classification/
+
+#https://stackoverflow.com/questions/37119071/scipy-rotate-and-zoom-an-image-without-changing-its-dimensions
+
+import cv2
+
+
+def cv2_clipped_zoom(img, zoom_factor=0):
+
+    """
+    Center zoom in/out of the given image and returning an enlarged/shrinked view of 
+    the image without changing dimensions
+    ------
+    Args:
+        img : ndarray
+            Image array
+        zoom_factor : float
+            amount of zoom as a ratio [0 to Inf). Default 0.
+    ------
+    Returns:
+        result: ndarray
+           numpy ndarray of the same shape of the input img zoomed by the specified factor.          
+    """
+    if zoom_factor == 0:
+        return img
+
+
+    height, width = img.shape[:2] # It's also the final desired shape
+    new_height, new_width = int(height * zoom_factor), int(width * zoom_factor)
+    
+    ### Crop only the part that will remain in the result (more efficient)
+    # Centered bbox of the final desired size in resized (larger/smaller) image coordinates
+    y1, x1 = max(0, new_height - height) // 2, max(0, new_width - width) // 2
+    y2, x2 = y1 + height, x1 + width
+    bbox = np.array([y1,x1,y2,x2])
+    # Map back to original image coordinates
+    bbox = (bbox / zoom_factor).astype(np.int)
+    y1, x1, y2, x2 = bbox
+    cropped_img = img[y1:y2, x1:x2]
+    
+    # Handle padding when downscaling
+    resize_height, resize_width = min(new_height, height), min(new_width, width)
+    pad_height1, pad_width1 = (height - resize_height) // 2, (width - resize_width) //2
+    pad_height2, pad_width2 = (height - resize_height) - pad_height1, (width - resize_width) - pad_width1
+    pad_spec = [(pad_height1, pad_height2), (pad_width1, pad_width2)] + [(0,0)] * (img.ndim - 2)
+
+    result = cv2.resize(cropped_img, (resize_width, resize_height), 
+                        interpolation= cv2.INTER_LINEAR
+                        )
+    result = np.pad(result, pad_spec)
+    assert result.shape[0] == height and result.shape[1] == width
+    result[result<0.000001] = 0.0
+    return result
+
+def scipy_rotate(volume):
+        # define some rotation angles
+        angles = [-330,-225,-180,-90, -45, -15, 15, 45, 90,180,225, 330]
+        # pick angles at random
+        angle = random.choice(angles)
+        # rotate volume
+        volume = ndimage.rotate(volume, angle, reshape=False)
+        volume[volume < 0] = 0
+        volume[volume > 1] = 1
+        return volume
+
+def clipped_zoom(img, zoom_factor, **kwargs): 
+    h, w = img.shape[:2] # For multichannel images we don't want to apply the zoom factor to the RGB # dimension, so instead we create a tuple of zoom factors, one per array 
+    # dimension, with 1's for any trailing dimensions after the width and height. 
+    zoom_tuple = (zoom_factor,) * 2 + (1,) * (img.ndim - 2) # Zooming out 
+    if zoom_factor < 1: # Bounding box of the zoomed-out image within the output array 
+        zh = int(np.round(h * zoom_factor)) 
+        zw = int(np.round(w * zoom_factor)) 
+        top = (h - zh) // 2 
+        left = (w - zw) // 2 # Zero-padding 
+        out = np.zeros_like(img) 
+        out[top:top+zh, left:left+zw] = ndimage.zoom(img, zoom_tuple, **kwargs) # Zooming in 
+    elif zoom_factor > 1: # Bounding box of the zoomed-in region within the input array 
+        zh = int(np.round(h / zoom_factor)) 
+        zw = int(np.round(w / zoom_factor)) 
+        top = (h - zh) // 2 
+        left = (w - zw) // 2 
+        out = ndimage.zoom(img[top:top+zh, left:left+zw], zoom_tuple, **kwargs) # `out` might still be slightly larger than `img` due to rounding, so
+         # trim off any extra pixels at the edges 
+        
+        trim_top = ((out.shape[0] - h) // 2) 
+        trim_left = ((out.shape[1] - w) // 2) 
+        out = out[trim_top:trim_top+h, trim_left:trim_left+w] # 
+    else: 
+        out = img 
+    
+    return out 
+
+def randomly_zoom(volume):
+        # define some rotation angles
+        zooms = [1.75,1.5,1.25, 0.75, 0.85]
+        # pick angles at random
+        z = random.choice(zooms)
+        
+        # rotate volume
+        volume = clipped_zoom(volume, z)
+        volume[volume < 0] = 0
+        volume[volume > 1] = 1
+        return volume
+
+def randomly_cv2_zoom(mltimage):
+        # define some rotation angles
+        zooms = [1.75,1.5,1.25, 0.75, 0.85]
+        # pick angles at random
+        z = random.choice(zooms)
+        
+        # zoom image
+        # HWDC
+        stackedimgs = []
+        for t in range(mltimage.shape[2]):
+            stackedimgs.append(cv2_clipped_zoom(mltimage[:,:,t,:].copy(), z))
+        
+        return np.stack(stackedimgs, axis = 2)
+
+
+class DataAugmentation:
+
+    def rotate_ndimage(self,ntimes =1):
+        newdata = []
+        for i in range(ntimes):
+            newdata = scipy_rotate(self.image )
+        
+        return newdata
+
+    def expand_ndimage(self,ntimes = 1):
+        newdata = []
+
+        for i in range(ntimes):
+            newdata = randomly_cv2_zoom(self.image )
+        
+        return newdata
+        
+    def __init__(self,
+                 nd_image,
+                 ):
+        
+        self.image = nd_image
