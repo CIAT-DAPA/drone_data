@@ -913,13 +913,22 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
         for varname in list(xrdatalist[idpol].keys()):
             minval = min_dict[varname]
             maxval = max_dict[varname]
-            for i in range(xrdatalist[idpol].dims[name4d]):
-                refvalue = xrdatalist[idpol][varname].isel({name4d:i}).values
+            if len(xrdatalist[idpol].dims.keys())>2:      
+                for i in range(xrdatalist[idpol].dims[name4d]):
+                    refvalue = xrdatalist[idpol][varname].isel({name4d:i}).values
+                    if minval>np.nanmin(refvalue):
+                        min_dict[varname] = np.nanmin(refvalue)
+                        minval = np.nanmin(refvalue)
+                    if maxval<np.nanmax(refvalue):
+                        max_dict[varname] = np.nanmax(refvalue)
+                        maxval = np.nanmax(refvalue)
+            else:
+                refvalue = xrdatalist[idpol][varname].values
                 if minval>np.nanmin(refvalue):
-                    min_dict[varname] = np.nanmin(refvalue)
-                    minval = np.nanmin(refvalue)
+                        min_dict[varname] = np.nanmin(refvalue)
+                        minval = np.nanmin(refvalue)
                 if maxval<np.nanmax(refvalue):
-                    max_dict[varname] = np.nanmax(refvalue)
-                    maxval = np.nanmax(refvalue)
+                        max_dict[varname] = np.nanmax(refvalue)
+                        maxval = np.nanmax(refvalue)
 
     return min_dict, max_dict

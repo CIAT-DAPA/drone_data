@@ -125,6 +125,46 @@ def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
             it +=1
 
 
+def plot_multibands(xrdata, num_rows = 1, num_columns = 1, figsize = [10,10]):
+    xrdatac = xrdata.to_array().values.copy()
+
+    plot_multichanels(xrdatac,num_rows = num_rows, 
+                      num_columns = num_columns, 
+                      figsize = figsize, 
+                      chanels_names = list(xrdata.keys()))
+
+
+def plot_multichanels(data, num_rows = 1, num_columns = 1, figsize = [10,10], chanels_names = None):
+
+    if chanels_names is None:
+        chanels_names = list(range(data.shape[2]))
+
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
+    
+    count = 0
+    vars = chanels_names
+    
+    for j in range(num_rows):
+        for i in range(num_columns):
+            if count < len(vars):
+
+                if num_rows>1:
+                    ax[j,i].imshow(data[count])
+                    ax[j,i].set_title(vars[count])
+                    ax[j,i].invert_xaxis()
+                    ax[j,i].set_axis_off()
+                else:
+                    ax[i].imshow(data[count])
+                    ax[i].set_axis_off()
+
+                count +=1
+            else:
+                if num_rows>1:
+                    ax[j,i].axis('off')
+                else:
+                    ax[i].axis('off')
+
+
 def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertaxis = True):
     
     """Plot a montage of 20 CT slices"""

@@ -94,6 +94,13 @@ def get_maskmltoptions(dataarray, conditions_list):
 
     return boolean_list
 
+def minmax_scale(data, minval = None, maxval = None):
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
 
 def scaleminmax(values):
     return ((values - np.nanmin(values)) /
