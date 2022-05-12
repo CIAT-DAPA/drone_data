@@ -149,25 +149,36 @@ def from_cloudpoints_to_xarray(dfcloudlist,
     return mltxarray
 
 
-def calculate_leaf_angle(xrdata, vector = (0,0,1), invert = False,heightvarname = 'z'):
+def calculate_leaf_angle(xrdata, vector = (0,0,1), invert = False,heightvarname = 'z', name4d ='date'):
     
     varnames = list(xrdata.keys())
     if heightvarname is not None and heightvarname not in varnames:
         raise ValueError('{} is not in the xarray'.format(heightvarname))
 
     anglelist = []
-    name4d = list(xrdata.dims.keys())[0]
+    #name4d = list(xrdata.dims.keys())[0]
+    if len(xrdata.dims.keys())>2:
+        for dateoi in range(len(xrdata[name4d])):
+            anglelist.append(get_angle_image_fromxarray(
+                xrdata.isel({name4d:dateoi}).copy(), vcenter=vector,heightvarname = heightvarname))
+        
+        xrimg = xarray.DataArray(anglelist)
+        vars = list(xrdata.dims.keys())
+        
+        vars = [vars[i] for i in range(len(vars)) if i != vars.index(name4d)]
 
-    for dateoi in range(len(xrdata[name4d])):
-        anglelist.append(get_angle_image_fromxarray(
-            xrdata.isel({name4d:dateoi}).copy(), vcenter=vector,heightvarname = heightvarname))
-    
-    xrimg = xarray.DataArray(anglelist)
-    xrimg.name = "leaf_angle"
-    xrimg = xrimg.rename({'dim_0': list(xrdata.dims.keys())[0], 
-                          'dim_1': list(xrdata.dims.keys())[1],
-                          'dim_2': list(xrdata.dims.keys())[2]})
-    
+        xrimg.name = "leaf_angle"
+        xrimg = xrimg.rename({'dim_0': name4d, 
+                            'dim_1': vars[0],
+                            'dim_2': vars[1]})
+    else:
+        xrimg = xarray.DataArray(get_angle_image_fromxarray(
+                xrdata.copy(), vcenter=vector,heightvarname = heightvarname))
+        vars = list(xrdata.dims.keys())
+        xrimg.name = "leaf_angle"
+        xrimg = xrimg.rename({'dim_0': vars[0], 
+                            'dim_1': vars[1]})
+
     xrdata = xrdata.merge(xrimg)
     
     if invert:

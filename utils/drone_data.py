@@ -127,11 +127,26 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
         vidata[np.isnan(vidata)] = xarraydata.attrs['nodata']
         vidata[vidata == namask] = np.nan
         xrvidata = xarray.DataArray(vidata)
+        
         xrvidata.name = label
-        xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+        
+        dimsnames = list(xarraydata.dims.keys())
+        if xrvidata.ndim == 3 and len(dimsnames) > 2:
+        
+            dim1name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[0]][0]
+            dim2name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[1]][0]
+            dim3name = [i for i in dimsnames if i not in (dim1name,dim2name)]
+            xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+                                                [dim1name,dim2name] + dim3name)))
+        
+        else:
+            xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
                                             list(xarraydata.dims.keys()))))
 
+
+        #print(xrvidata.dims.keys())
         xarraydata = xarray.merge([xarraydata, xrvidata])
+        #xarraydata = xrvidata
 
         xarraydata.attrs['count'] = len(list(xarraydata.keys()))
 

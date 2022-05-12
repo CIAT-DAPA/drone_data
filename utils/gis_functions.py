@@ -643,7 +643,7 @@ def expand_1dcoords(listvalues, newdim):
 
 
 #### reszie single xarray variables
-def resize_4dxarray(xrdata, new_size = None, flip = False):
+def resize_4dxarray(xrdata, new_size = None, flip = False, name4d = 'date'):
     """
     a functions to resize a 4 dimesionals (date, x, y, variables) xrarray data  
 
@@ -659,7 +659,7 @@ def resize_4dxarray(xrdata, new_size = None, flip = False):
     if new_size is None:
         raise ValueError("new size must be given")
 
-    name4d = list(xrdata.dims.keys())[0]
+    #name4d = list(xrdata.dims.keys())[0]
     #ydim, xdim = list(xrdata.dims.keys())[1],list(xrdata.dims.keys())[2]
     imgresized = []
     for dateoi in range(len(xrdata[name4d])):
@@ -743,7 +743,7 @@ def stack_as4dxarray(xarraylist,
 # filter
 
 
-def filter_3Dxarray_usingradial(xrdata, **kargs):
+def filter_3Dxarray_usingradial(xrdata,name4d = 'date', **kargs):
     
     varnames = list(xrdata.keys())
     
@@ -755,7 +755,7 @@ def filter_3Dxarray_usingradial(xrdata, **kargs):
         imgfilteredperdate.append(indlayer)
     
     if len(imgfilteredperdate)>0:
-        name4d = list(xrdata.dims.keys())[0]
+        #name4d = list(xrdata.dims.keys())[0]
 
         mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
         mltxarray[name4d] = xrdata[name4d].values
@@ -768,7 +768,7 @@ def filter_3Dxarray_usingradial(xrdata, **kargs):
 
 
 # impute data 
-def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn',nanvalue = None,**kargs):
+def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn',nanvalue = None, name4d='date' ,**kargs):
 
     varnames = list(xrdata.keys())
     if nabandmaskname is not None and nabandmaskname not in varnames:
@@ -782,7 +782,6 @@ def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn'
     if bandstofill is None:
         bandstofill = varnames
 
-    name4d = list(xrdata.dims.keys())[0]
     imgfilled = []
     for dateoi in range(len(xrdata[name4d])):
         
@@ -892,7 +891,7 @@ def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, c
     return [r,c]
 
 
-def get_minmax_fromlistxarray(xrdatalist):
+def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
     """
     get nin max values from a list of xarray
 
@@ -907,7 +906,6 @@ def get_minmax_fromlistxarray(xrdatalist):
     if not (type(xrdatalist) == list):
         raise ValueError('xrdatalist must be a list of xarray')
 
-    name4d = list(xrdatalist[0].dims.keys())[0]    
     min_dict = dict(zip(list(xrdatalist[0].keys()), [9999]*len(list(xrdatalist[0].keys()))))
     max_dict = dict(zip(list(xrdatalist[0].keys()), [-9999]*len(list(xrdatalist[0].keys()))))
 

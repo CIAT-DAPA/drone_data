@@ -13,7 +13,7 @@ from utils.xyz_functions import CloudPoints
 import geopandas as gpd
 
 from utils.xyz_functions import get_baseline_altitude
-from utils.gis_functions import impute_4dxarray
+from utils.gis_functions import impute_4dxarray,xarray_imputation
 from utils.xyz_functions import calculate_leaf_angle
 from utils.drone_data import calculate_vi_fromxarray
 
@@ -73,7 +73,7 @@ def mergemissions_singledate( roi,capturedates = None,
     datesnames = [datetime.strptime(m,'%Y%m%d') for m in capturedates]
     rgbmsz = rgbmsz.expand_dims(dim='date', axis=0)
     rgbmsz['date'] = datesnames
-    rgbmsz['count'] = len(list(rgbmsz.keys()))
+    rgbmsz.attrs['count'] = len(list(rgbmsz.keys()))
         
     return rgbmsz,suffix 
 
@@ -239,6 +239,8 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffe
             output = imagelist[0]
         else:
             output = xarray.merge(imagelist)
+        
+        output.attrs['count'] =len(list(output.keys()))
 
     else:
         raise ValueError('no mission found')
@@ -248,6 +250,68 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffe
 
 
 #### preprocessing functions
+
+def single_vi_bsl_impt_preprocessing(
+                        xrpolfile,
+                        input_path = None,
+                        baseline = True,
+                        reference_date = 0,
+                        height_name= 'z',
+                        bsl_method = 'max_probability',
+                        leaf_angle = True,
+                        imputation = True,
+                        nabandmaskname='red',
+                        vilist = None,
+                        bsl_value = None
+                        ):
+
+    suffix = ''
+
+    if type(xrpolfile) is xarray.core.dataset.Dataset:
+       xrdatac = xrpolfile.copy()
+
+    else:
+        with open(os.path.join(input_path,xrpolfile),"rb") as f:
+            xrdata= pickle.load(f)
+            xrdatac = xrdata.copy()
+    
+    if baseline:
+
+        if bsl_value is not None:
+            bsl = bsl_value
+        else:    
+            xrdf = xrdatac.isel(date = reference_date).copy().to_dataframe()
+            altref = xrdf.reset_index().loc[:,('x','y',height_name,'red_3d','green_3d','blue_3d')].dropna()
+            bsl = get_baseline_altitude(altref, method=bsl_method)
+
+        xrdatac[height_name] = (xrdatac[height_name]- bsl)*100
+        xrdatac[height_name] = xrdatac[height_name].where(
+            np.logical_or(np.isnan(xrdatac[height_name]),xrdatac[height_name] > 0 ), 0)
+        suffix +='bsl_' 
+
+
+    if imputation:
+        if len(list(xrdatac.dims.keys())) > 3:
+            xrdatac = impute_4dxarray(xrdatac, bandstofill=[height_name],
+                       nabandmaskname=nabandmaskname,n_neighbors=5)
+        else:
+            xrdatac = xarray_imputation(xrdatac, bands=[height_name],n_neighbors=5)
+            
+        suffix +='imputation_' 
+
+    if leaf_angle:
+        xrdatac = calculate_leaf_angle(xrdatac, invert=True)
+        suffix +='la_'
+
+    if vilist is not None:
+        for vi in vilist:
+            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi])
+        suffix +='vi_'
+
+    xrdatac.attrs['count'] = len(list(xrdatac.keys()))
+    return xrdatac, suffix
+
+
 
 def run_parallel_preprocessing_perpolygon(
     xrpolfile,
@@ -262,43 +326,28 @@ def run_parallel_preprocessing_perpolygon(
     imputation = True,
     nabandmaskname='red',
     vilist = ['ndvi','ndre'],
-    output_path = None
-    
+    output_path = None,
+    bsl_value = None
     ):
+    
+    if output_path is None:
+        output_path= ""
+    else:
+        if not os.path.isdir(output_path):
+            os.mkdir(output_path)
+        
+    xrdatac,suffix = single_vi_bsl_impt_preprocessing(xrpolfile,
+                                    input_path,
+                                    baseline,
+                                    reference_date,
+                                    height_name,
+                                    bsl_method,
+                                    leaf_angle,
+                                    imputation,
+                                    nabandmaskname,
+                                    vilist,
+                                    bsl_value)
 
-    suffix = ''
-    if not os.path.isdir(output_path):
-        os.mkdir(output_path)
-
-    with open(os.path.join(input_path,xrpolfile),"rb") as f:
-        xrdata= pickle.load(f)
-
-    xrdatac = xrdata.copy()
-    if baseline:
-        xrdf = xrdata.isel(date = reference_date).copy().to_dataframe()
-        altref = xrdf.reset_index().loc[:,('x','y',height_name,'red_3d','green_3d','blue_3d')].dropna()
-        bsl = get_baseline_altitude(altref, method=bsl_method)
-
-        xrdatac[height_name] = (xrdata[height_name]- bsl)*100
-        xrdatac[height_name] = xrdatac[height_name].where(
-            np.logical_or(np.isnan(xrdatac[height_name]),xrdatac[height_name] > 0 ), 0)
-        suffix +='bsl_' 
-
-
-    if imputation:
-        xrdatac = impute_4dxarray(xrdatac, bandstofill=[height_name],
-                       nabandmaskname=nabandmaskname,n_neighbors=5)
-        suffix +='imputation_' 
-    if leaf_angle:
-        xrdatac = calculate_leaf_angle(xrdatac, invert=True)
-        suffix +='la_'
-
-    if vilist is not None:
-        for vi in vilist:
-            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi])
-
-
-    xrdatac.attrs['count'] = len(list(xrdatac.keys()))
 
     textafterpol = xrpolfile.split('_pol_')[1]
     idpol = textafterpol.split('_')[0]

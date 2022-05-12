@@ -72,14 +72,19 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
     if varname not in list(xrdata.keys()):
             raise ValueError(
                 'the variable name {} is not in the xarray data'.format(varname))
-        
-
-    df = xrdata[varname].copy().to_dataframe()
-    df = df.groupby(list(xrdata.dims.keys())[0]).quantile(quantiles).unstack()[varname]
-    df.columns = ['q_{}'.format(i) for i in quantiles]
-    df = df.unstack().reset_index()
-    df.columns = ['quantnames', 'date', 'value']
     
+    df = xrdata[varname].copy().to_dataframe()
+    
+    if len(list(xrdata.dims.keys())) >3:
+        df = df.groupby([0]).quantile(quantiles).unstack()[varname]
+        df.columns = ['q_{}'.format(i) for i in quantiles]
+        df = df.unstack().reset_index()
+        df.columns = ['quantnames', 'date', 'value']
+    ## not date include
+    else:
+        vals = df.quantile(quantiles).unstack()[varname].reset_index().T.iloc[1]
+        df = pd.DataFrame(zip(['q_{}'.format(i) for i in quantiles], vals.values))
+        df.columns = ['quantnames', 'value']
     #times = ['_t' + str(list(np.unique(df.date)).index(i)) for i in df.date.values]
 
     df['metric'] = [varname + '_'] + df['quantnames']
@@ -89,9 +94,10 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
 def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z', 
                                                     leaf_anglename ='leaf_angle',
                                                     leaf_anglethresh = 70,
-                                                    reduction_perc = 40):
+                                                    reduction_perc = 40,
+                                                    name4d = 'date'):
     
-    name4d = list(xrdata.dims.keys())[0]
+
 
     if heightvarname not in list(xrdata.keys()):
         raise ValueError('the height variable is not in the xarray')
