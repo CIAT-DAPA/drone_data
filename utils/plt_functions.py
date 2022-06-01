@@ -1,9 +1,13 @@
 import numpy as np
 import matplotlib
-from utils import data_processing
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 import math
+
+def scaleminmax(values):
+    return ((values - np.nanmin(values)) /
+            (np.nanmax(values) - np.nanmin(values)))
+
 
 def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_width=12, fig_height=8):
 
@@ -31,7 +35,7 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
            banddata = np.asarray(banddata, dtype=np.float64)
 
         banddata[banddata == xarradata.attrs['nodata']] = np.nan
-        threebanddata.append(data_processing.scaleminmax(banddata))
+        threebanddata.append(scaleminmax(banddata))
 
     threebanddata = np.dstack(tuple(threebanddata))
 
@@ -125,16 +129,18 @@ def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
             it +=1
 
 
-def plot_multibands(xrdata, num_rows = 1, num_columns = 1, figsize = [10,10]):
+def plot_multibands(xrdata, num_rows = 1, num_columns = 1, figsize = [10,10], name = 'viridis', fontsize=12):
     xrdatac = xrdata.to_array().values.copy()
 
     plot_multichanels(xrdatac,num_rows = num_rows, 
                       num_columns = num_columns, 
                       figsize = figsize, 
-                      chanels_names = list(xrdata.keys()))
+                      chanels_names = list(xrdata.keys()),
+                      name = name,fontsize=fontsize)
 
 
-def plot_multichanels(data, num_rows = 1, num_columns = 1, figsize = [10,10], chanels_names = None):
+def plot_multichanels(data, num_rows = 2, num_columns = 2, figsize = [10,10], 
+                     chanels_names = None, name = 'viridis', fontsize=12):
 
     if chanels_names is None:
         chanels_names = list(range(data.shape[2]))
@@ -149,8 +155,8 @@ def plot_multichanels(data, num_rows = 1, num_columns = 1, figsize = [10,10], ch
             if count < len(vars):
 
                 if num_rows>1:
-                    ax[j,i].imshow(data[count])
-                    ax[j,i].set_title(vars[count])
+                    ax[j,i].imshow(data[count], cmap=plt.get_cmap(name))
+                    ax[j,i].set_title(vars[count], fontsize=fontsize)
                     ax[j,i].invert_xaxis()
                     ax[j,i].set_axis_off()
                 else:

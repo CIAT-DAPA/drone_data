@@ -255,6 +255,10 @@ def rasterize_using_bb(gpdf, bb, crs, sres=0.01):
 
 
 def coordinates_fromtransform(transform, imgsize):
+    """
+    Create a longitude, latitude meshgrid based on the spatial affine.
+    
+    """
     # All rows and columns
     cols, rows = np.meshgrid(np.arange(imgsize[0]), np.arange(imgsize[1]))
 

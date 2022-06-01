@@ -135,7 +135,8 @@ def fromxyz_file_to_xarray(xyzpaths, gpdpolygon, sres = 0.012,multiprocess= Fals
     return points_perplant
     
 
-def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffer = 0.6, 
+def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, 
+                 buffer = 0.6, bufferdef= None,
                  bandsms = ['blue', 'green', 'red', 'edge', 'nir'],
                  bandsrgb = ["red","green","blue"],
                  shiftmethod = "convolution",
@@ -193,8 +194,8 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffe
         shiftconv= find_shift_between2xarray(msm.drone_data, mmrgb.drone_data, method=shiftmethod)
         msregistered = register_xarray(msm.drone_data, shiftconv)
 
-        msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'])
-        mmrgbclipped = clip_xarraydata(mmrgb.drone_data, roi.loc[:,'geometry'])
+        msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'], buffer = bufferdef)
+        mmrgbclipped = clip_xarraydata(mmrgb.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
 
         # stack multiple missions using multispectral images as reference
         if rgb_asreference:
@@ -215,7 +216,7 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffe
             imagelist.append(xrdata)
 
     elif msm is not None:
-        msclipped = clip_xarraydata(msm.drone_data, roi.loc[:,'geometry'])
+        msclipped = clip_xarraydata(msm.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
 
         imagelist.append(msclipped)
         if xrdata is not None:
@@ -223,7 +224,7 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None, buffe
             imagelist.append(xrdata)
 
     elif mmrgb is not None:
-        mmrgbclipped = clip_xarraydata(mmrgb.drone_data, roi.loc[:,'geometry'])
+        mmrgbclipped = clip_xarraydata(mmrgb.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
         if exportrgb:
             imagelist.append(mmrgbclipped)
         if xrdata is not None and exportxyz:

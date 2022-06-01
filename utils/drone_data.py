@@ -422,7 +422,8 @@ class DroneData:
                  inputpath,
                  bands=None,
                  multiband_image=False,
-                 table=True,
+                 roi = None,
+                 table=False,
                  bounds = None):
 
         if bands is None:
@@ -449,6 +450,8 @@ class DroneData:
         else:
             raise ValueError('Non file path was found')
             
+        if roi is not None:
+            self.clip_using_gpd(roi, replace = True)
 
         if table:
             self._data, self._nanindex = self.data_astable()

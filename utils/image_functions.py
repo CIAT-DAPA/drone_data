@@ -267,9 +267,10 @@ def cv2_clipped_zoom(img, zoom_factor=0):
     result[result<0.000001] = 0.0
     return result
 
-def scipy_rotate(volume):
+
+def scipy_rotate(volume,angles = [-330,-225,-180,-90, -45, -15, 15, 45, 90,180,225, 330]):
         # define some rotation angles
-        angles = [-330,-225,-180,-90, -45, -15, 15, 45, 90,180,225, 330]
+        
         # pick angles at random
         angle = random.choice(angles)
         # rotate volume
@@ -319,25 +320,47 @@ def randomly_zoom(volume):
 
 def randomly_cv2_zoom(mltimage):
         # define some rotation angles
-        zooms = [1.75,1.5,1.25, 0.75, 0.85]
+        zooms = [1.5,1.25, 0.75, 0.85]
         # pick angles at random
         z = random.choice(zooms)
         
         # zoom image
         # HWDC
         stackedimgs = []
-        for t in range(mltimage.shape[2]):
-            stackedimgs.append(cv2_clipped_zoom(mltimage[:,:,t,:].copy(), z))
-        
-        return np.stack(stackedimgs, axis = 2)
+        if len(mltimage.shape)>3:
+            for t in range(mltimage.shape[2]):
+                stackedimgs.append(cv2_clipped_zoom(mltimage[:,:,t,:].copy(), z))
+            stackedimgs = np.stack(stackedimgs, axis = 2)
+        else:
+            stackedimgs = cv2_clipped_zoom(mltimage.copy(), z)
+
+        return stackedimgs
+
+def randomly_shiftimage(img,maxshift = 0.15):
+    xoptions = list(range(-int(img.shape[0]*maxshift),int(img.shape[0]*maxshift)))
+    yoptions = list(range(-int(img.shape[1]*maxshift),int(img.shape[1]*maxshift)))
+            # pick angles at random
+    xshift = random.choice(xoptions)
+    yshift = random.choice(yoptions)
+    if len(img.shape)>3:
+        stackedimgs = []
+        for t in range(img.shape[2]):
+            stackedimgs.append(register_image_shift(img[:,:,t,:].copy(), [xshift,yshift]))
+        stackedimgs = np.stack(stackedimgs, axis = 2)
+    else:
+        stackedimgs = register_image_shift(img.copy(), [xshift,yshift])
+
+    return stackedimgs
+
 
 
 class DataAugmentation:
 
-    def rotate_ndimage(self,ntimes =1):
+    def rotate_ndimage(self,ntimes =1,
+                       angles = [-330,-225,-180,-90, -45, -15, 15, 45, 90,180,225, 330]):
         newdata = []
         for i in range(ntimes):
-            newdata = scipy_rotate(self.image )
+            newdata = scipy_rotate(self.image,angles = angles )
         
         return newdata
 
@@ -348,8 +371,17 @@ class DataAugmentation:
             newdata = randomly_cv2_zoom(self.image )
         
         return newdata
+    
+    def shift_ndimage(self,ntimes = 1,**kargs):
+        newdata = []
+
+        for i in range(ntimes):
+            newdata = randomly_shiftimage(self.image, **kargs)
+        
+        return newdata
         
     def __init__(self,
+    
                  nd_image,
                  ):
         
