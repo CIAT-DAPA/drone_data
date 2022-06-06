@@ -75,8 +75,11 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
     
     df = xrdata[varname].copy().to_dataframe()
     
-    if len(list(xrdata.dims.keys())) >3:
-        df = df.groupby([0]).quantile(quantiles).unstack()[varname]
+    if len(list(xrdata.dims.keys())) >=3:
+        
+        vardatename = [i for i in list(xrdata.dims.keys()) if type(xrdata[i].values[0]) == np.datetime64]
+        
+        df = df.groupby(vardatename).quantile(quantiles).unstack()[varname]
         df.columns = ['q_{}'.format(i) for i in quantiles]
         df = df.unstack().reset_index()
         df.columns = ['quantnames', 'date', 'value']
@@ -90,6 +93,34 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
     df['metric'] = [varname + '_'] + df['quantnames']
 
     return df.drop(['quantnames'], axis = 1)
+
+
+def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0):
+
+    vardatename = [i for i in list(xrdata.dims.keys()) if type(xrdata[i].values[0]) == np.datetime64][0]
+
+    initimageg = xrdata.isel({vardatename:refimg}).copy()
+    _,center = centerto_edgedistances_fromxarray(initimageg,  refband = heightvarname)
+    xp,yp = center
+    pr = red_perc/100
+    y = xrdata[heightvarname].values.shape[1]
+    x = xrdata[heightvarname].values.shape[2]
+
+    red0 = int(xrdata[heightvarname].values.shape[1]*pr/2)
+    red1 = int(xrdata[heightvarname].values.shape[2]*pr/2)
+
+    lc = int((xp-red0) if (xp-red0) > 0 else 0)
+    rc = int((xp+red0) if (x-(xp+red0)) > 0 else x)
+    tc = int((yp-red1) if (yp-red1) > 0 else 0)
+    bc = int((yp+red1) if (y-(yp+red1)) > 0 else y)
+    
+    npmask = np.zeros(xrdata[heightvarname].values.shape)
+    npmask[:,tc:bc,lc:rc] = 1
+
+    xrfiltered = xrdata.copy() * npmask
+
+    return xrfiltered
+
 
 def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z', 
                                                     leaf_anglename ='leaf_angle',
@@ -108,14 +139,9 @@ def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z',
     if method == 'leaf_angle' and leaf_anglename in list(xrdata.keys()):
         xrfiltered = xrdata.where((xrdata[leaf_anglename])>leaf_anglethresh,np.nan)[heightvarname].copy()
     elif (method == 'window'):
-        pr = reduction_perc/100
-        mshape0 = int(xrdata[heightvarname].values.shape[1]*pr/2)
-        mshape1 = int(xrdata[heightvarname].values.shape[2]*pr/2)
-
-        npmask = np.zeros(xrdata[heightvarname].values.shape)
-        npmask[:,mshape0:-mshape0, mshape1:-mshape1] = 1
-        xrfiltered = xrdata[heightvarname].copy() * npmask
-    
+        xrfiltered = get_filteredimage(xrdata, heightvarname = heightvarname,red_perc = reduction_perc)
+        xrfiltered = xrfiltered[heightvarname]
+        
     volvalues = []
 
     for i in range(len(xrfiltered[name4d].values)):
@@ -477,6 +503,7 @@ class Phenomics:
                  earlystages_filter = False,
                  earlystages_dates = None,
                  radial_filter = True,
+                 rf_onlythesedates = None,
                  summaryquantiles = [0.25,0.5,0.75],
                  days_earlystage = 15):
                  
@@ -509,6 +536,7 @@ class Phenomics:
         # apply filter to remove small objects that don't belong to the main body
         if radial_filter:
             self.xrdata = filter_3Dxarray_usingradial(self.xrdata, 
+                                                      onlythesedates = rf_onlythesedates,
                                                       anglestep = 1,
                                                       nathreshhold=4)
 

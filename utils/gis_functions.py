@@ -747,15 +747,22 @@ def stack_as4dxarray(xarraylist,
 # filter
 
 
-def filter_3Dxarray_usingradial(xrdata,name4d = 'date', **kargs):
+def filter_3Dxarray_usingradial(xrdata,
+                                name4d = 'date', 
+                                onlythesedates = None, **kargs):
     
     varnames = list(xrdata.keys())
     
     imgfilteredperdate = []
     for i in range(len(xrdata.date)):
         indlayer = xrdata.isel(date = i).copy()
-        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-        indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+        if onlythesedates is not None and i in onlythesedates:
+            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+        elif onlythesedates is None:
+            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+
         imgfilteredperdate.append(indlayer)
     
     if len(imgfilteredperdate)>0:

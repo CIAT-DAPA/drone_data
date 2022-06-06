@@ -79,7 +79,7 @@ def mergemissions_singledate( roi,capturedates = None,
 
 
 def run_parallel_mergemissions_perpol(j, SHP_PATH, rgb_path = None, ms_path=None, xyz_path=None, output_path=None, 
-                        featurename =None, exportrgb =True, exportxyz = True, rgb_asreference = True):
+                        featurename =None, exportrgb =True, exportxyz = True, rgb_asreference = True, preprocess = True):
     cloud_thread = []
     capturedates = None
     allpolygons = gpd.read_file(SHP_PATH)
@@ -117,11 +117,11 @@ def run_parallel_mergemissions_perpol(j, SHP_PATH, rgb_path = None, ms_path=None
     else:
         idpol = allpolygons.loc[j,featurename]
         outfn = os.path.join(output_path, '{}pol_{}_{}_{}.pickle'.format(suffix,idpol,capturedates[-1],capturedates[0]))
-
+    
     with open(outfn, "wb") as f:
         pickle.dump(alldata, f)
         
-    return alldata 
+    #return alldata 
 
 def fromxyz_file_to_xarray(xyzpaths, gpdpolygon, sres = 0.012,multiprocess= False, nworkers=2):
 
@@ -292,7 +292,7 @@ def single_vi_bsl_impt_preprocessing(
 
 
     if imputation:
-        if len(list(xrdatac.dims.keys())) > 3:
+        if len(list(xrdatac.dims.keys())) >=3:
             xrdatac = impute_4dxarray(xrdatac, bandstofill=[height_name],
                        nabandmaskname=nabandmaskname,n_neighbors=5)
         else:

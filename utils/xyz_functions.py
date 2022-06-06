@@ -59,30 +59,37 @@ def valid(chunks, bb, buffer= 0.0):
             yield chunk.loc[mask]
             break
 
-def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz'):
+def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz',mindata = 100):
     data = True
     file_pathfn = os.listdir(file_path)
     xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
     
     count = 0
     while data:
-        
-        firstrow,chunksize = getchunksize_forxyzfile(os.path.join(file_path,xyzfilenames[count]), bb,buffer, step)
-        
-
+        firstrow,chunksize = getchunksize_forxyzfile(
+            os.path.join(file_path,xyzfilenames[count]), bb,buffer, step)
         if chunksize>0:
-            data = False
-        else:
-            count +=1
-        if count >len(xyzfilenames):
-           data = False
-           raise ValueError('Check the coordinates, there is no intesection in the file')
-        
+            chunks = pd.read_csv(
+                os.path.join(file_path,xyzfilenames[count]),
+                skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
 
-    chunks = pd.read_csv(os.path.join(file_path,xyzfilenames[count]),skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
-    df = pd.concat(valid(chunks, bb, buffer))
-    
-    return df
+            if count == 0:
+                df = pd.concat(valid(chunks, bb, buffer))
+                dfp =df.copy()
+                if len(dfp)>mindata:
+                    data = False
+            else:
+                df = pd.concat(valid(chunks, bb, buffer))
+                dfp = pd.concat([dfp,df])
+        
+        if count >=(len(xyzfilenames)-1):
+           data = False
+        count +=1
+
+    if len(dfp)<mindata:
+        raise ValueError('Check the coordinates, there is no intesection in the file')
+
+    return dfp
 
 
 def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_probability', 
@@ -289,12 +296,8 @@ class CloudPoints:
         self.boundaries = gpdpolygon.bounds
         self.variables_names = variables
 
-        
-
         if type(xyzfile) != list:
             xyzfile = [xyzfile]
-
-        
 
         cllist = []
         if multiprocess:
