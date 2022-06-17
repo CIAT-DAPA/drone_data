@@ -8,7 +8,7 @@ import math
 from skimage.morphology import convex_hull_image
 
 from utils.gis_functions import filter_3Dxarray_usingradial
-from utils.gis_functions import centerto_edgedistances_fromxarray
+from utils.gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
 from utils.image_functions import getcenter_from_hull
 
 
@@ -93,33 +93,6 @@ def get_df_quantiles(xrdata, varname=None, quantiles = [0.25,0.5,0.75]):
     df['metric'] = [varname + '_'] + df['quantnames']
 
     return df.drop(['quantnames'], axis = 1)
-
-
-def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0):
-
-    vardatename = [i for i in list(xrdata.dims.keys()) if type(xrdata[i].values[0]) == np.datetime64][0]
-
-    initimageg = xrdata.isel({vardatename:refimg}).copy()
-    _,center = centerto_edgedistances_fromxarray(initimageg,  refband = heightvarname)
-    xp,yp = center
-    pr = red_perc/100
-    y = xrdata[heightvarname].values.shape[1]
-    x = xrdata[heightvarname].values.shape[2]
-
-    red0 = int(xrdata[heightvarname].values.shape[1]*pr/2)
-    red1 = int(xrdata[heightvarname].values.shape[2]*pr/2)
-
-    lc = int((xp-red0) if (xp-red0) > 0 else 0)
-    rc = int((xp+red0) if (x-(xp+red0)) > 0 else x)
-    tc = int((yp-red1) if (yp-red1) > 0 else 0)
-    bc = int((yp+red1) if (y-(yp+red1)) > 0 else y)
-    
-    npmask = np.zeros(xrdata[heightvarname].values.shape)
-    npmask[:,tc:bc,lc:rc] = 1
-
-    xrfiltered = xrdata.copy() * npmask
-
-    return xrfiltered
 
 
 def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z', 

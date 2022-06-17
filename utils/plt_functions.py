@@ -204,7 +204,8 @@ def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertax
 
 def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None, 
                           figsize = (20,20), scale = 255., 
-                          bands =['red','green','blue']):
+                          bands =['red','green','blue'],
+                          savedir = None):
     
     if ncols is None:
         ncols = math.ceil(len(xarraydata.date) / nrows)
@@ -241,6 +242,10 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
             else:
                 axs[xi,yi].axis('off')
 
+    if savedir is not None:
+        fig.savefig(savedir)
+    
+    return fig
 
 def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None, 
                           figsize = (20,20), 

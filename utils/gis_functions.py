@@ -443,9 +443,12 @@ def from_bbxarray_2polygon(bb, xarrayimg):
 def AoI_from_polygons(p1, p2):
     intersecarea = p1.intersection(p2).area
     unionarea = p1.union(p2).area
-    return intersecarea / unionarea
-
-
+    minarea = p2.area 
+    if (intersecarea / minarea) > 0.95:
+        aoi = 1
+    else:
+        aoi = intersecarea / unionarea
+    return aoi
 
 def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
     area_per_iter = []
@@ -486,6 +489,54 @@ def best_polygon(overlaylist):
     y2 = np.max(ylist)
 
     return from_xyxy_2polygon(x1, y1, x2, y2)
+
+
+def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0, clip_xarray = False):
+    """
+    Mask a xarray data using a reduction percentage
+
+    """
+    if len(list(xrdata.dims.keys())) >=3:
+        vardatename = [i for i in list(xrdata.dims.keys()) if type(xrdata[i].values[0]) == np.datetime64][0]
+        initimageg = xrdata.isel({vardatename:refimg}).copy()
+        ydimpos = 1
+        xdimpos = 2
+    else:
+        initimageg = xrdata.copy()
+        ydimpos = 0
+        xdimpos = 1
+
+    _,center = centerto_edgedistances_fromxarray(initimageg,  refband = heightvarname)
+    xp,yp = center
+    pr = red_perc/100
+    y = xrdata[heightvarname].values.shape[ydimpos]
+    x = xrdata[heightvarname].values.shape[xdimpos]
+
+    red0 = int(xrdata[heightvarname].values.shape[ydimpos]*pr/2)
+    red1 = int(xrdata[heightvarname].values.shape[xdimpos]*pr/2)
+
+    lc = int((xp-red0) if (xp-red0) > 0 else 0)
+    rc = int((xp+red0) if (x-(xp+red0)) > 0 else x)
+    tc = int((yp-red1) if (yp-red1) > 0 else 0)
+    bc = int((yp+red1) if (y-(yp+red1)) > 0 else y)
+    
+    npmask = np.zeros(xrdata[heightvarname].values.shape)
+    if len(list(xrdata.dims.keys())) >=3:
+        npmask[:,tc:bc,lc:rc] = 1
+    else:
+        npmask[tc:bc,lc:rc] = 1
+
+    xrfiltered = xrdata.copy() * npmask
+
+    if clip_xarray:
+        ncols_img, nrows_img = xrfiltered.attrs['width'], xrfiltered.attrs['height']
+        big_window = windows.Window(col_off=0, row_off=0, width=ncols_img, height=nrows_img)
+    
+        window = windows.Window(col_off=lc, row_off=tc, width=abs(lc - rc), height=abs(tc-bc)).intersection(big_window)
+        transform = windows.transform(window, xrfiltered.attrs['transform'])
+        xrfiltered = crop_using_windowslice(xrfiltered.copy(), window, transform)
+
+    return xrfiltered
 
 ### merge overlap polygons
 

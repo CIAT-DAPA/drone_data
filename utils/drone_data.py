@@ -2,19 +2,22 @@ import numpy as np
 from sqlalchemy import over
 import xarray
 import rasterio
+import rasterio.mask
+from rasterio.windows import from_bounds
+import rioxarray as rio
 import os
 import glob
 
 from utils import data_processing
 from utils.plt_functions import plot_multibands_fromxarray
-from rasterio.windows import from_bounds
+
 
 import matplotlib.pyplot as plt
 
 from utils import classification_functions as clf
 import pandas as pd
 import geopandas as gpd
-import rasterio.mask
+
 from utils import gis_functions as gf
 
 import re
@@ -155,6 +158,33 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
 
     return xarraydata
 
+
+def multiband_totiff(xrdata, filename, varnames=None):
+
+    #varnames = self._checkbandstoexport(varnames)
+    metadata = xrdata.attrs
+
+    if filename.endswith('tif'):
+        suffix = filename.index('tif')
+    else:
+        suffix = (len(filename) + 1)
+
+    if len(varnames) > 1:
+        metadata['count'] = len(varnames)
+        fn = "{}{}.tif".format(filename[:(suffix - 1)], "_".join(varnames))
+        xrdata.rio.to_raster(fn)
+    #    imgstoexport = []
+
+    #    fname = ""
+    #    for varname in varnames:
+    #        fname = fname + "_" + varname
+    #        imgstoexport.append(xrdata[varname].data.copy())
+
+    #    fn = "{}{}.tif".format(filename[:(suffix - 1)], fname)
+    #    imgstoexport = np.array(imgstoexport).swapaxes(0,1)
+    #    with rasterio.open(fn, 'w', **metadata) as dst:
+    #        for id, layer in enumerate(imgstoexport, start=1):
+    #            dst.write_band(id, layer)
 
 class DroneData:
 
@@ -318,7 +348,6 @@ class DroneData:
 
         # update nodata attribute
         metadata['nodata'] = nodata
-        metadata['count'] = self._bands
 
         multi_xarray = xarray.merge(riolist)
         multi_xarray.attrs = metadata
@@ -331,6 +360,7 @@ class DroneData:
         multi_xarray = multi_xarray.assign_coords(y=yvalues)
         
         multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
+        metadata['count'] = len(multi_xarray.keys())
 
         return multi_xarray
 
@@ -350,49 +380,39 @@ class DroneData:
         ax.set_axis_off()
         plt.show()
 
-    def multiband_totiff(self, filename, varnames='all'):
 
-        varnames = self._checkbandstoexport(varnames)
+    def to_tiff(self, filename, channels='all',multistack = False):
+        """
+        Using this function the drone data will be saved as a tiff element in a given 
+        filepath.
+        ```
+        Args:
+            filename: The file name path that will be used to save the spatial data.
+            channels: optional, the user can select the exporting channels.
+            multistack: boolean, default False, it will export the inofrmation as a multistack array or layer by layer
+
+        Returns:
+            NONE
+        """
+        varnames = self._checkbandstoexport(channels)
         metadata = self.drone_data.attrs
 
         if filename.endswith('tif'):
             suffix = filename.index('tif')
         else:
             suffix = (len(filename) + 1)
-
-        if len(varnames) > 1:
-            metadata['count'] = len(varnames)
-            imgstoexport = []
-            fname = ""
-            for varname in varnames:
-                fname = fname + "_" + varname
-                imgstoexport.append(self.drone_data[varname].data.copy())
-
-            fn = "{}{}.tif".format(filename[:(suffix - 1)], fname)
-            imgstoexport = np.array(imgstoexport)
-            with rasterio.open(fn, 'w', **metadata) as dst:
-                for id, layer in enumerate(imgstoexport, start=1):
-                    dst.write_band(id, layer)
-
-    def to_tiff(self, filename, varnames='all'):
-
-        varnames = self._checkbandstoexport(varnames)
-        metadata = self.drone_data.attrs
-
-        if filename.endswith('tif'):
-            suffix = filename.index('tif')
+        if multistack:
+            multiband_totiff(self.drone_data, filename, varnames= varnames)
         else:
-            suffix = (len(filename) + 1)
+            if len(varnames) > 0:
+                for i, varname in enumerate(varnames):
+                    imgtoexport = self.drone_data[varname].data.copy()
+                    fn = "{}_{}.tif".format(filename[:(suffix - 1)], varname)
+                    with rasterio.open(fn, 'w', **metadata) as dst:
+                        dst.write_band(1, imgtoexport)
 
-        if len(varnames) > 0:
-            for i, varname in enumerate(varnames):
-                imgtoexport = self.drone_data[varname].data.copy()
-                fn = "{}_{}.tif".format(filename[:(suffix - 1)], varname)
-                with rasterio.open(fn, 'w', **metadata) as dst:
-                    dst.write_band(1, imgtoexport)
-
-        else:
-            print('check the bands names that you want to export')
+            else:
+                print('check the bands names that you want to export')
 
     def split_into_tiles(self, polygons=False, **kargs):
 
@@ -455,3 +475,6 @@ class DroneData:
 
         if table:
             self._data, self._nanindex = self.data_astable()
+
+
+
