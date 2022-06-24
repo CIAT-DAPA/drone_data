@@ -13,7 +13,7 @@ from utils.xyz_functions import CloudPoints
 import geopandas as gpd
 
 from utils.xyz_functions import get_baseline_altitude
-from utils.gis_functions import impute_4dxarray,xarray_imputation
+from utils.gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
 from utils.xyz_functions import calculate_leaf_angle
 from utils.drone_data import calculate_vi_fromxarray
 
@@ -261,6 +261,7 @@ def single_vi_bsl_impt_preprocessing(
                         bsl_method = 'max_probability',
                         leaf_angle = True,
                         imputation = True,
+                        equalization = True,
                         nabandmaskname='red',
                         vilist = None,
                         bsl_value = None
@@ -303,7 +304,10 @@ def single_vi_bsl_impt_preprocessing(
     if leaf_angle:
         xrdatac = calculate_leaf_angle(xrdatac, invert=True)
         suffix +='la_'
-
+    if equalization:
+        xrdatac = hist_ndxarrayequalization(xrdatac, bands = ['red','green','blue'])
+        suffix +='eq_'
+        
     if vilist is not None:
         for vi in vilist:
             xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi])

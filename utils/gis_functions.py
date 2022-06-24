@@ -994,3 +994,40 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
                         maxval = np.nanmax(refvalue)
 
     return min_dict, max_dict
+
+
+from utils.image_functions import hist_3dimg
+    
+def hist_ndxarrayequalization(xrdata, bands = None,keep_original = True):
+    """
+    change rgb bands contrast by applying an histogram equalization
+    ----------
+    xrdata : xrarray
+    bands : str list, optional
+        define which bands will be corrected, if this variable is not defined
+        the correction will be applied to all available variables
+    Returns
+    -------
+    xrarray
+    """  
+    if bands is None:
+        bands = list(xrdata.keys())
+    ndxarray = xrdata.copy()
+    lendims = len(list(ndxarray.dims))
+
+    if lendims == 2:
+        ndimgs = hist_3dimg(ndxarray[bands])
+    if lendims == 3:
+        ndimgs = []
+        for j in range(len(bands)):
+            barray = ndxarray[bands[j]].to_numpy().copy()
+            ndimgs.append(hist_3dimg(barray))
+        ndimgs = np.array(ndimgs)
+    
+    for i in range(len(bands)):
+        if keep_original:
+            ndxarray[bands[i] + '_eq'].values = ndimgs.astype(float)[i] 
+        else:
+            ndxarray[bands[i]].values = ndimgs.astype(float)[i] 
+        
+    return ndxarray

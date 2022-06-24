@@ -13,6 +13,30 @@ import warnings
 import cv2 as cv
 
 
+#https://en.wikipedia.org/wiki/Histogram_equalization
+def hist_equalization(np2dimg):
+    if 'f' in np2dimg.dtype.str:
+        np2dimg[np.isnan(np2dimg)] = 0
+        np2dimg = np2dimg.astype('uint8')
+
+    hist,_ = np.histogram(np2dimg.flatten(),256,[0,256])
+    cdf = hist.cumsum()
+    #cdf_normalized = cdf * float(hist.max()) / cdf.max()
+    cdf_m = np.ma.masked_equal(cdf,0)
+    cdf_m = (cdf_m - cdf_m.min())*255/(cdf_m.max()-cdf_m.min())
+    cdf = np.ma.filled(cdf_m,0).astype('uint8')
+    return cdf[np2dimg]
+    
+def hist_3dimg(np3dimg):
+    ref = np.min(np3dimg.shape)
+    mind = [i for i in range(len(np3dimg.shape)) if np3dimg.shape[i] == ref]
+    imgeqlist =[]
+    for i in range(np3dimg.shape[mind[0]]):
+        
+        imgeqlist.append(hist_equalization(np3dimg[i]))
+    
+    return np.array(imgeqlist)
+
 def change_bordersvaluesasna(nptwodarray, bufferna):
     intborderx = int(nptwodarray.shape[0]*(bufferna/100))
     intbordery = int(nptwodarray.shape[1]*(bufferna/100))

@@ -129,33 +129,114 @@ def plot_cluser_profiles(tsdata, ncluster, ncols = None, nrow = 2):
             it +=1
 
 
-def plot_multibands(xrdata, num_rows = 1, num_columns = 1, figsize = [10,10], name = 'viridis', fontsize=12):
-    xrdatac = xrdata.to_array().values.copy()
+def minmax_xarray(xrdata):
 
-    plot_multichanels(xrdatac,num_rows = num_rows, 
+    for i in xrdata.keys():
+        xrdata[i].values = np.array(
+            (xrdata[i].values - np.nanmin(xrdata[i].values))/(
+                np.nanmax(xrdata[i].values) - np.nanmin(xrdata[i].values)))
+    return xrdata
+
+
+def plot_multibands(xrdata, num_rows = 1, num_columns = 1, 
+                    figsize = [10,10], cmap = 'viridis', fontsize=12,
+                     colorbar = True,
+                     minmaxscale = True):
+    
+    """
+    create a figure showing multiple xarray variables
+    ----------
+    xrdata : Xarray data
+    num_rows : int, optional
+        set number of rows
+    num_columns : int, optional
+        set number of rows
+    figsize : tuple, optional
+        A tuple (width, height) of the figure in inches. 
+    label_name : str, optional
+        an string value for the colorbar legend.
+    chanels_names : list of string, optional
+        a list with the labels for each plot.
+    cmap : str, optional
+        a matplotlib colormap name.
+    legfontsize : int, optional
+        a number for setting legend title size.
+    legtickssize : int, optional
+        a number for setting legend ticks size.
+    colorbar: float, optional
+        if the plot will include a colorbar legend
+    minmaxscale = float, optional
+        if the array will be scaled using a min max scaler
+    Returns
+    -------
+    """    
+
+    xrdatac = xrdata.copy()
+    if minmaxscale:
+        xrdatac = minmax_xarray(xrdatac).to_array().values
+    else:
+        xrdatac = xrdatac.to_array().values
+
+    return plot_multichanels(xrdatac,num_rows = num_rows, 
                       num_columns = num_columns, 
                       figsize = figsize, 
                       chanels_names = list(xrdata.keys()),
-                      name = name,fontsize=fontsize)
+                      cmap = cmap,fontsize=fontsize,
+                      colorbar = colorbar)
 
 
-def plot_multichanels(data, num_rows = 2, num_columns = 2, figsize = [10,10], 
-                     chanels_names = None, name = 'viridis', fontsize=12):
+def plot_multichanels(data, num_rows = 2, 
+                     num_columns = 2, figsize = [10,10],
+                     label_name = None,
+                     chanels_names = None, 
+                     cmap = 'viridis', 
+                     fontsize=12, 
+                     legfontsize = 15,
+                     legtickssize = 15,
+                     colorbar = True):
+    """
+    create a figure showing one channel or multiple channels
+    ----------
+    data : Numpy array
+    num_rows : int, optional
+        set number of rows
+    num_columns : int, optional
+        set number of rows
+    figsize : tuple, optional
+        A tuple (width, height) of the figure in inches. 
+    label_name : str, optional
+        an string value for the colorbar legend.
+    chanels_names : list of string, optional
+        a list with the labels for each plot.
+    cmap : str, optional
+        a matplotlib colormap name.
+    legfontsize : int, optional
+        a number for setting legend title size.
+    legtickssize : int, optional
+        a number for setting legend ticks size.
+    colorbar: float, optional
+        if the plot will include a colorbar legend
 
+    Returns
+    -------
+    """                 
+    import matplotlib as mpl
     if chanels_names is None:
-        chanels_names = list(range(data.shape[2]))
+        chanels_names = list(range(data.shape[0]))
 
     fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
     
     count = 0
     vars = chanels_names
-    
+    cmaptxt = plt.get_cmap(cmap)
+    vmin = np.nanmin(data)
+    vmax = np.nanmax(data)
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
 
                 if num_rows>1:
-                    ax[j,i].imshow(data[count], cmap=plt.get_cmap(name))
+                    ax[j,i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
                     ax[j,i].set_title(vars[count], fontsize=fontsize)
                     ax[j,i].invert_xaxis()
                     ax[j,i].set_axis_off()
@@ -169,6 +250,22 @@ def plot_multichanels(data, num_rows = 2, num_columns = 2, figsize = [10,10],
                     ax[j,i].axis('off')
                 else:
                     ax[i].axis('off')
+    #cbar = plt.colorbar(data.ravel())
+    #cbar.set_label('X+Y')
+    #cmap = mpl.cm.viridis
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    
+    if colorbar:
+        cbar_ax = fig.add_axes([0.91, 0.15, 0.03, 0.7])
+        cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+                    ax=ax, #orientation='vertical',
+                    cax=cbar_ax,
+                    pad=0.15)
+        cb.ax.tick_params(labelsize=legtickssize)
+        if label_name is not None:
+            cb.set_label(label=label_name, fontdict={'size' : legfontsize})
+
+    return fig,ax
 
 
 def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertaxis = True):
@@ -279,4 +376,113 @@ def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None,
 
     cbar_ax = fig.add_axes([.9, 0.1, 0.02, 0.7])
     fig.colorbar(datatoplot, cax=cbar_ax)
-            
+
+
+def plot_heights(xrdata, num_rows = 2, 
+                     num_columns = 2, 
+                     figsize = [10,10],
+                     height_name = 'z',
+                     bsl = None,
+                     chanels_names = None, 
+                     
+                     label_name = 'Height (cm)', 
+                     fontsize=12,
+                     scalez = 100):
+    """
+    create a figure showing a 2d profile from a 3d image reconstruction
+    ----------
+    data : Numpy array
+    num_rows : int, optional
+        set number of rows
+    num_columns : int, optional
+        set number of rows
+    figsize : tuple, optional
+        A tuple (width, height) of the figure in inches. 
+    height_name : str
+        column name assigned for z axis.
+    bsl : float, optional
+        dfault value for soil reference, if this is not given, it will be calculated from the first image.
+    chanels_names : str list, optional
+        a list with the labels for each plot..
+    label_name : str, optional
+        y axis label.
+    label_name : int, optional
+        a number for setting legend ticks size.
+    fontsize: int, optional
+        font size
+    scalez: int, optional
+        integer number for scaling height values
+
+    Returns
+    -------
+    """    
+    if chanels_names is None:
+        chanels_names = [np.datetime_as_string(i, unit='D') for i in xrdata.date.values ]
+
+    fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
+    
+    count = 0
+    vars = chanels_names
+    xrdatac = xrdata.copy()
+    if bsl is not None:
+        xrdatac[height_name] = (xrdatac[height_name] - bsl)*scalez 
+
+    data = xrdatac[height_name].values
+    vmin = np.nanmin(data)
+    vmax = np.nanmax(data)
+    vmaxl = 1*(np.nanstd(data))
+    for j in range(num_rows):
+        for i in range(num_columns):
+            if count < len(vars):
+
+                if num_rows>1:
+
+                    xrtestdf = xrdatac.isel(date = count).to_dataframe()
+
+                    altref = xrtestdf.reset_index().loc[:,('x','y','z','red','green','blue')].dropna() 
+                    indcolors = [[r/255.,g/255.,b/255.] for r,g,b in zip(
+                    altref.iloc[:,3].values, 
+                    altref.iloc[:,4].values,
+                    altref.iloc[:,5].values)]
+
+                    ax[j,i].scatter(altref.iloc[:,1],
+                                    altref.iloc[:,2],
+                                    c = indcolors)
+                    
+                    xaxisref = np.nanquantile(altref.iloc[:,1],0.1)
+                    yphreference = np.median(altref[height_name].values[altref[height_name].values>0])
+                    ax[j,i].axhline(y = yphreference, color = 'black', linestyle = '-')
+                    ax[j,i].plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
+                    ax[j,i].axhline(y = 0, color = 'black', linestyle = '-')
+                    ax[j,i].set_title(vars[count], fontsize=fontsize, fontweight='bold')
+                    #ax[j,i].invert_xaxis()
+                    #ax[j,i].set_axis_off()
+                    ax[j,i].set_xticks([])
+                    #ax[j,i].set_yticks([])
+                    ax[j,i].set_ylim(vmin, vmax+vmaxl)
+                    
+                else:
+                    ax[i].imshow(data[count])
+                    ax[i].set_axis_off()
+
+                count +=1
+            else:
+                if num_rows>1:
+                    ax[j,i].axis('off')
+                else:
+                    ax[i].axis('off')
+    # Adding a plot in the figure which will encapsulate all the subplots with axis showing only
+    fig.add_subplot(1, 1, 1, frame_on=False)
+
+    # Hiding the axis ticks and tick labels of the bigger plot
+    plt.tick_params(labelcolor="none", bottom=False, left=False)
+
+    # Adding the x-axis and y-axis labels for the bigger plot
+    #plt.xlabel('Common X-Axis', fontsize=15, fontweight='bold')
+    plt.ylabel(label_name, fontsize=int(fontsize*2), fontweight='bold')
+
+    plt.show()
+    #cbar = plt.colorbar(data.ravel())
+    #cbar.set_label('X+Y')
+    #cmap = mpl.cm.viridis
+    return fig, ax
