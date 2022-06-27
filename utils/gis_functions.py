@@ -830,11 +830,30 @@ def filter_3Dxarray_usingradial(xrdata,
 
 
 # impute data 
-def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn',nanvalue = None, name4d='date' ,**kargs):
-
+def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn',nanvalue = None, name4d='date',onlythesedates = None ,**kargs):
+    """
+    fill 3d xarray dimensions (date, x , y)
+    ----------
+    xrdata : xarray
+    bandstofill : str list, optional
+        define which bands will be corrected, if this variable is not defined
+        the correction will be applied to all available variables
+    nabandmaskname : str, optional
+        Use a chanel that belongs to the xarray, to be used as a reference in case 
+        that some nan values want to be preserved
+    method: str, optional
+        Currently only k nearest neighbours is available
+    name4d: str, optional
+        Default name for  the date dimension is date
+    onlythesedates: int list, optional
+        Apply the filling method to only specific dates.
+    Returns
+    -------
+    xrarray
+    """  
     varnames = list(xrdata.keys())
     if nabandmaskname is not None and nabandmaskname not in varnames:
-        raise ValueError('{} is not in the xarray'.format(nabandmaskname))
+        raise ValueError('{} is not in the xarray'.format(varnames))
     if bandstofill is not None:
         if type(bandstofill) is list:
             namesinlist = [i in varnames for i in bandstofill]
@@ -845,7 +864,12 @@ def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn'
         bandstofill = varnames
 
     imgfilled = []
-    for dateoi in range(len(xrdata[name4d])):
+    if onlythesedates is None:
+        datestofill = range(len(list(xrdata[name4d])))
+    else:
+        datestofill = onlythesedates
+
+    for dateoi in datestofill:
         
         if nabandmaskname is not None:
             filltestref = xrdata.isel({name4d:dateoi})[nabandmaskname].copy()
@@ -860,14 +884,42 @@ def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn'
                                  nanvalue = nanvalue,**kargs)
 
         imgfilled.append(xrfilled)
+    #def updatexarray_specific_dates(xrdata, onlythesedates, bandstoupdate):
+    if onlythesedates is not None:
+        for band in bandstofill:
+            imgfilledc = []
+            count = 0
+            for dateoi in range(len(xrdata[name4d].values)):
+                if dateoi in onlythesedates:
+                    imgfilledc.append(imgfilled[count][band])
+                    count +=1
+                else:
+                    imgfilledc.append(xrdata.isel({name4d:dateoi})[band])
+                
+            imgfilledc = xarray.concat(imgfilledc, dim=name4d)
+            imgfilledc[name4d] = xrdata[name4d]
+            xrdata[band] = imgfilledc
+            imgfilledc = xrdata
 
-    imgfilled = xarray.concat(imgfilled, dim=name4d)
-    imgfilled[name4d] = xrdata[name4d].values
-    imgfilled.attrs['count'] = len(list(imgfilled.keys()))
+    else:    
+        imgfilledc = xarray.concat(imgfilled, dim=name4d)
+        imgfilledc[name4d] = xrdata[name4d].values
+        imgfilledc.attrs['count'] = len(list(imgfilledc.keys()))
 
-    return imgfilled
+    return imgfilledc
 
 def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'knn', nanvalue = None,**kargs):
+    """
+    fill a 2d array using an imputation method
+
+    ----------
+    Parameters
+    xrdata : xrdata
+    ----------
+    Returns
+    xarray : an xarray with all the channels filled using the imputation method
+    
+    """
     dummylayer = False
     if imputation_method == 'knn':
         impmethod =  KNNImputer(**kargs)
@@ -920,8 +972,6 @@ def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'k
         xrdata[spband].values  = arraytoimput
     
     return xrdata
-
-
 
 
 def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, confidence = 0.95, refband = None):
@@ -998,7 +1048,8 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
 
 from utils.image_functions import hist_3dimg
     
-def hist_ndxarrayequalization(xrdata, bands = None,keep_original = True):
+def hist_ndxarrayequalization(xrdata, bands = None,
+                              keep_original = True,name4d = 'date'):
     """
     change rgb bands contrast by applying an histogram equalization
     ----------
@@ -1026,7 +1077,21 @@ def hist_ndxarrayequalization(xrdata, bands = None,keep_original = True):
     
     for i in range(len(bands)):
         if keep_original:
-            ndxarray[bands[i] + '_eq'].values = ndimgs.astype(float)[i] 
+            xrimg = xarray.DataArray(ndimgs.astype(float)[i] )
+            xrimg.name = bands[i] + '_eq'
+            vars = list(ndxarray.dims.keys())
+            if lendims == 3:
+                vars = [vars[i] for i in range(len(vars)) if i != vars.index(name4d)]
+                xrimg = xrimg.rename({'dim_0': name4d, 
+                                'dim_1': vars[0],
+                                'dim_2': vars[1]})
+            else:
+                xrimg = xrimg.rename({
+                    'dim_1': vars[0],
+                    'dim_2': vars[1]})
+
+            ndxarray[bands[i] + '_eq'] = xrimg
+            ndxarray.attrs['count'] = len(list(ndxarray.keys()))
         else:
             ndxarray[bands[i]].values = ndimgs.astype(float)[i] 
         

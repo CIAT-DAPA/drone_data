@@ -24,6 +24,7 @@ import re
 
 VEGETATION_INDEX = {# rgb bands
 'grvi': '(green - red)/(green + red)',
+'grvi_eq': '(green_eq - red_eq)/(green_eq + red_eq)',
 'mgrvi': '((green*green) - (red*red))/((green*green) + (red*red))',
 'rgbvi': '((green*green) - (blue*red))/ ((green*green) + (blue*red))',
  # nir indexes

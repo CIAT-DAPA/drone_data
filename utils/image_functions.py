@@ -13,7 +13,7 @@ import warnings
 import cv2 as cv
 
 
-#https://en.wikipedia.org/wiki/Histogram_equalization
+# https://en.wikipedia.org/wiki/Histogram_equalization
 def hist_equalization(np2dimg):
     if 'f' in np2dimg.dtype.str:
         np2dimg[np.isnan(np2dimg)] = 0

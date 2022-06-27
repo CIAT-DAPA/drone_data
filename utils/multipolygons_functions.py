@@ -20,13 +20,13 @@ from utils.drone_data import calculate_vi_fromxarray
 
 VEGETATION_INDEX = {# rgb bands
 'grvi': '(green_ms - red_ms)/(green_ms + red_ms)',
+'grvi_eq': '(green_eq - red_eq)/(green_eq + red_eq)',
 'grvi_rgb': '(green - red)/(green + red)',
-'mgrvi': '((green_ms*green_ms) - (red_ms*red_ms))/((green_ms*green_ms) + (red_ms*red_ms))',
-'mgrvi_rgb': '((green*green) - (red*red))/((green*green) + (red*red))',
 'rgbvi': '((green_ms*green_ms) - (blue_ms*red_ms))/ ((green_ms*green_ms) + (blue_ms*red_ms))',
+'rgbvi_eq': '((green_eq*green_eq) - (blue_eq*red_eq))/ ((green_eq*green_eq) + (blue_eq*red_eq))',
 'rgbvi_rgb': '((green*green) - (blue*red))/ ((green*green) + (blue*red))',
  # nir indexes
- 'ndvi': '(nir - red_ms)/(nir + red_ms)',
+'ndvi': '(nir - red_ms)/(nir + red_ms)',
 'ndre': '(nir - edge)/(nir + edge)',
 'gndvi': '(nir - green_ms)/(nir + green_ms)',
 'regnvi': '(edge - green_ms)/(edge + green_ms)',
@@ -275,8 +275,8 @@ def single_vi_bsl_impt_preprocessing(
     else:
         with open(os.path.join(input_path,xrpolfile),"rb") as f:
             xrdata= pickle.load(f)
-            xrdatac = xrdata.copy()
-    
+        xrdatac = xrdata.copy()
+        del xrdata
     if baseline:
 
         if bsl_value is not None:
@@ -294,10 +294,11 @@ def single_vi_bsl_impt_preprocessing(
 
     if imputation:
         if len(list(xrdatac.dims.keys())) >=3:
-            xrdatac = impute_4dxarray(xrdatac, bandstofill=[height_name],
-                       nabandmaskname=nabandmaskname,n_neighbors=5)
+            xrdatac = impute_4dxarray(xrdatac, 
+            bandstofill=[height_name],
+            nabandmaskname=nabandmaskname,n_neighbors=5)
         else:
-            xrdatac = xarray_imputation(xrdatac, bands=[height_name],n_neighbors=5)
+            xrdatac = xarray_imputation(xrdatac, bands=[height_name],nabandmaskname=nabandmaskname,n_neighbors=5)
             
         suffix +='imputation_' 
 
@@ -305,9 +306,9 @@ def single_vi_bsl_impt_preprocessing(
         xrdatac = calculate_leaf_angle(xrdatac, invert=True)
         suffix +='la_'
     if equalization:
-        xrdatac = hist_ndxarrayequalization(xrdatac, bands = ['red','green','blue'])
+        xrdatac = hist_ndxarrayequalization(xrdatac, bands = ['red','green','blue'],keep_original=True)
         suffix +='eq_'
-        
+
     if vilist is not None:
         for vi in vilist:
             xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi])
@@ -340,18 +341,20 @@ def run_parallel_preprocessing_perpolygon(
     else:
         if not os.path.isdir(output_path):
             os.mkdir(output_path)
-        
+
+
+
     xrdatac,suffix = single_vi_bsl_impt_preprocessing(xrpolfile,
-                                    input_path,
-                                    baseline,
-                                    reference_date,
-                                    height_name,
-                                    bsl_method,
-                                    leaf_angle,
-                                    imputation,
-                                    nabandmaskname,
-                                    vilist,
-                                    bsl_value)
+                                    input_path= input_path,
+                                    baseline= baseline,
+                                    reference_date= reference_date,
+                                    height_name = height_name,
+                                    bsl_method= bsl_method,
+                                    leaf_angle = leaf_angle,
+                                    imputation = imputation,
+                                    nabandmaskname = nabandmaskname,
+                                    vilist = vilist,
+                                    bsl_value = bsl_value)
 
 
     textafterpol = xrpolfile.split('_pol_')[1]
