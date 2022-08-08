@@ -185,8 +185,7 @@ def cartimg_topolar_transform(nparray, anglestep = 5, max_angle = 360, expand_ra
 
 def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
     
-    xborder = nparray.shape[1]
-    yborder = nparray.shape[0]
+
     
     center_x = int(nparray.shape[1]/2)
     center_y = int(nparray.shape[0]/2)
@@ -410,3 +409,112 @@ class DataAugmentation:
                  ):
         
         self.image = nd_image
+
+
+
+def from_to2d_zarray(data, zvalues, axis = 'x', 
+                     zmin = 0, zmax = 60,cms = 1, scalez = 10, stepslices = 1, initval = 1, **kwargs):
+
+    """
+    a functions to reshape the [x y z chanel] data to a [x z chanel] image
+
+    ----------
+    Parameters
+    data : numpy 2d array
+        an array that contains the chanel data to be transformed as x z axis
+    zvalues: numpy 2d array
+        an array that contains the z values
+    axis :int, optional
+        which axis will transformed along with z [ 'x' , 'y' ]
+    
+    zmin : int, optional
+        a value that will be taken as minimun for z axis
+    zmax : int, optional
+        a value that will be taken as maximun for z axis
+
+    ----------
+    Returns
+    numpy 3d array [chanel, x, z]
+    """
+
+    if axis=='x':
+        lenaxis = data.shape[0]
+        slicedstr = 'zvalues[j]'
+        sentvalues = 'data[j]'
+    else:
+        lenaxis = data.shape[1]
+        slicedstr = 'zvalues[:,j]'
+        sentvalues = 'data[:,j]'
+
+    zimg = np.array([i for i in range(zmin*scalez, zmax*scalez, int(float(cms) * float(scalez)))])
+    
+
+    slicelist = []
+    for j in range(initval*stepslices,(lenaxis-(stepslices)),stepslices):
+        slicedataz = eval(slicedstr)
+        if np.sum(np.logical_not(np.isnan(slicedataz))) > 0:
+            slicedata = eval(sentvalues)
+            z2dimg = singlexy_to2d_zarray(
+                                          [slicedata], 
+                                          slicedataz, 
+                                          scalez = scalez, referencearray = zimg,**kwargs)[0]
+        else:
+            z2dimg = np.zeros((len(zimg),len(slicedataz)))
+        slicelist.append(z2dimg)
+
+    return np.array(slicelist)    
+
+
+def singlexy_to2d_zarray(data, zvalues, scalez = 10, referencearray = None, 
+                         barstyle = True, flip =False, fliplefttoright = False):
+
+    """
+    a functions to reshape the [x y z chanel] data to a [x z chanel] image
+
+    ----------
+    Parameters
+    data : numpy 2d array
+        an array that contains the chanel data to be transformed as x z axis
+    zvalues: numpy 2d array
+        an array that contains the z values
+
+    
+    ----------
+    Returns
+    numpy 3d array [chanel, x, z]
+    """
+
+
+    coordspos = []
+    for xi in range(len(zvalues)):
+        xivals = zvalues[xi]
+        if not np.isnan(zvalues[xi]):
+            
+            zpos = np.round(xivals,1)*scalez
+
+            zpos = [i for i in range(len(referencearray)-1) 
+                        if np.logical_and(zpos>=referencearray[i],zpos<referencearray[i+1])][0]
+            
+            coordspos.append([xi, zpos])
+    #assign data
+    listnewdata = []
+    for i in range(len(data)):
+        npzeros = np.zeros((len(zvalues), len(referencearray)))
+
+        for xx,yy in coordspos:
+            if barstyle == True:
+                npzeros[xx,:yy] = data[i][xx]
+            else:
+                #npzeros[xx,yy] = data[i][xx]
+                npzeros[xx,:yy] = 1
+
+        if flip:
+            npzeros = npzeros.swapaxes(0,1)
+            npzeros = Image.fromarray(npzeros)
+            npzeros = np.array(ImageOps.flip(npzeros))
+        if fliplefttoright:
+            npzeros = np.array(Image.fromarray(npzeros).transpose(Image.FLIP_LEFT_RIGHT))
+
+        listnewdata.append(npzeros)
+    
+    return np.array(listnewdata)

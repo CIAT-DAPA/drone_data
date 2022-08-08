@@ -17,7 +17,7 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 from rasterio import features
 import rioxarray
-
+import cv2
 import affine
 
 from skimage.registration import phase_cross_correlation
@@ -698,7 +698,7 @@ def expand_1dcoords(listvalues, newdim):
 
 
 #### reszie single xarray variables
-def resize_4dxarray(xrdata, new_size = None, flip = False, name4d = 'date'):
+def resize_4dxarray(xrdata, new_size = None, name4d = 'date', **kwargs):
     """
     a functions to resize a 4 dimesionals (date, x, y, variables) xrarray data  
 
@@ -706,7 +706,7 @@ def resize_4dxarray(xrdata, new_size = None, flip = False, name4d = 'date'):
     Parameters
     xradata : xarray wich contains all information wuth sizes x, y, variables
     new_size: tuple, with new size in x and y
-    flip: boolean, flip the image
+    
     ----------
     Returns
     xarray:
@@ -718,7 +718,7 @@ def resize_4dxarray(xrdata, new_size = None, flip = False, name4d = 'date'):
     #ydim, xdim = list(xrdata.dims.keys())[1],list(xrdata.dims.keys())[2]
     imgresized = []
     for dateoi in range(len(xrdata[name4d])):
-        imgresized.append(rezize_3dxarray(xrdata.isel(date = dateoi).copy(), new_size, flip=flip))
+        imgresized.append(rezize_3dxarray(xrdata.isel(date = dateoi).copy(), new_size, **kwargs))
 
     imgresized = xarray.concat(imgresized, dim=name4d)
     imgresized[name4d] = xrdata[name4d].values
@@ -726,29 +726,51 @@ def resize_4dxarray(xrdata, new_size = None, flip = False, name4d = 'date'):
 
     return imgresized
 
-def rezize_3dxarray(xrdata, new_size, flip=True):
+def rezize_3dxarray(xrdata, new_size, flip=True, interpolation = 'bilinear', blur= True, kernelsize = (5,5)):
+
     """
     a functions to resize a 3 dimesional xrdata 
 
     ----------
     Parameters
-    xradata : xarray wich contains all information wuth sizes x, y, variables
-    new_size: tuple, with new size in x and y
+    xradata : xarray 
+        wich contains all information wuth sizes x, y, variables
+    new_size: tuple,
+        with new size in x and y
+    flip: boolean, 
+        flip the image
     ----------
     Returns
     xarray:
     """
+    # TODO: create an image function for resize
+
     newx, newy = new_size
     varnames = list(xrdata.keys())
     dims2d = list(xrdata.dims)
+    intmethod = cv2.INTER_LINEAR
+    if interpolation == 'bilinear':
+        intmethod =  cv2.INTER_LINEAR
+    if interpolation == 'bicubic':
+        intmethod =  cv2.INTER_CUBIC
+    if interpolation == 'nearest':
+        intmethod = cv2.INTER_NEAREST
+
     listnpdata = []
 
     for i in range(len(varnames)):
-        image = Image.fromarray(xrdata[varnames[i]].values.copy())
-        imageres = image.resize((newx, newy), Image.BILINEAR)
+        #image = Image.fromarray(xrdata[varnames[i]].values.copy())
+        #imageres = image.resize((newx, newy), Image.BILINEAR)
+        image = xrdata[varnames[i]].values.copy()
+        imageres = cv2.resize(image, (newx, newy), interpolation= intmethod)
+
         if flip:
-            imageres = ImageOps.flip(imageres)
-        listnpdata.append(np.array(imageres))
+            imageres = Image.fromarray(imageres)
+            imageres = np.array(ImageOps.flip(imageres))
+        if blur:
+            imageres = cv2.GaussianBlur(imageres,kernelsize,0)
+
+        listnpdata.append(imageres)
 
     newyvalues = expand_1dcoords(xrdata[dims2d[0]].values, newy)
     newxvalues = expand_1dcoords(xrdata[dims2d[1]].values, newx)

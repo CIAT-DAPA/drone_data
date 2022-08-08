@@ -397,11 +397,17 @@ class Phenomics:
         return pd.concat(spectraldf, axis=0)
 
 
-    def plant_height_summary(self, varname = 'z', quantiles = [0.25,0.5,0.75]):
+    def plant_height_summary(self, varname = 'z', quantiles = [0.25,0.5,0.75], 
+                             reduction_perc = None):
         self._ph_varname = varname
         
+        if reduction_perc is not None:
+            xrdata = get_filteredimage(self.xrdata, heightvarname = 'z',red_perc = reduction_perc)
+        else:
+            xrdata = self.xrdata.copy()
+
         self._phenomic_summary[
-            'plant_height'] = get_df_quantiles(self.xrdata, 
+            'plant_height'] = get_df_quantiles(xrdata, 
             varname= varname, quantiles=quantiles)
         
         return self._phenomic_summary['plant_height'] 

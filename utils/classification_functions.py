@@ -152,9 +152,13 @@ def cluster_3dxarray(xrdata, cluster_dict):
 
 
 
-def cluster_4dxarray(xarraydata, cl_dict):
+def cluster_4dxarray(xarraydata, cl_dict, only_thesedates = None):
 
-    dim1 = xarraydata.dims[list(xarraydata.dims)[0]]
+    if only_thesedates is None:
+        dim1 = xarraydata.dims[list(xarraydata.dims)[0]]
+    else:
+        dim1 = only_thesedates
+
     imglist = []
 
     for i in range(dim1):
@@ -162,7 +166,7 @@ def cluster_4dxarray(xarraydata, cl_dict):
         xrsingle = cluster_3dxarray(dataimg, cl_dict)
 
         imglist.append(xrsingle)
-
+    
     clxarray = xarray.concat(imglist, list(xarraydata.dims)[0])
     clxarray = clxarray.rename(dict(zip(clxarray.dims,
                                                 list(xarraydata.dims.keys()))))

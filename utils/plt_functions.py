@@ -26,7 +26,7 @@ def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_wid
     ax.set_axis_off()
     plt.show()
 
-def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
+def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinverse = True):
 
     threebanddata = []
     for i in bands:
@@ -42,7 +42,9 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8):
     fig, ax = plt.subplots(figsize=(fig_sizex, fig_sizey))
 
     ax.imshow(threebanddata)
-    ax.invert_xaxis()
+    if xinverse:
+        ax.invert_xaxis()
+        
     ax.set_axis_off()
     plt.show()
 
@@ -139,9 +141,14 @@ def minmax_xarray(xrdata):
 
 
 def plot_multibands(xrdata, num_rows = 1, num_columns = 1, 
-                    figsize = [10,10], cmap = 'viridis', fontsize=12,
-                     colorbar = True,
-                     minmaxscale = True):
+                    chanels_names = None,
+                    figsize = [10,10], 
+                    cmap = 'viridis', 
+                    fontsize=12,
+                    legfontsize = 15,
+                    legtickssize = 15,
+                    colorbar = True,
+                    minmaxscale = True):
     
     """
     create a figure showing multiple xarray variables
@@ -151,14 +158,14 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
         set number of rows
     num_columns : int, optional
         set number of rows
+    chanels_names : list of string, optional
+        a list that has the variables names to be plot.    
     figsize : tuple, optional
         A tuple (width, height) of the figure in inches. 
-    label_name : str, optional
-        an string value for the colorbar legend.
-    chanels_names : list of string, optional
-        a list with the labels for each plot.
     cmap : str, optional
         a matplotlib colormap name.
+    fontsize : int, optional
+        a number for setting legend title size.
     legfontsize : int, optional
         a number for setting legend title size.
     legtickssize : int, optional
@@ -176,13 +183,16 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
         xrdatac = minmax_xarray(xrdatac).to_array().values
     else:
         xrdatac = xrdatac.to_array().values
+    if chanels_names is not None:
+        xrdatac = xrdatac[chanels_names]
 
     return plot_multichanels(xrdatac,num_rows = num_rows, 
                       num_columns = num_columns, 
                       figsize = figsize, 
                       chanels_names = list(xrdata.keys()),
                       cmap = cmap,fontsize=fontsize,
-                      colorbar = colorbar)
+                      colorbar = colorbar, legfontsize = legfontsize,
+                      legtickssize = legtickssize)
 
 
 def plot_multichanels(data, num_rows = 2, 
@@ -210,6 +220,8 @@ def plot_multichanels(data, num_rows = 2,
         a list with the labels for each plot.
     cmap : str, optional
         a matplotlib colormap name.
+    fontsize : int, optional
+        a number for setting legend title size.
     legfontsize : int, optional
         a number for setting legend title size.
     legtickssize : int, optional
@@ -242,6 +254,8 @@ def plot_multichanels(data, num_rows = 2,
                     ax[j,i].set_axis_off()
                 else:
                     ax[i].imshow(data[count])
+                    ax[i].set_title(vars[count], fontsize=fontsize)
+                    ax[i].invert_xaxis()
                     ax[i].set_axis_off()
 
                 count +=1
@@ -302,8 +316,31 @@ def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertax
 def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None, 
                           figsize = (20,20), scale = 255., 
                           bands =['red','green','blue'],
-                          savedir = None):
-    
+                          savedir = None,
+                          fontsize = 15):
+    """
+    create a figure showing one ataked multiband figure
+    ----------
+    Params:
+
+    xarraydata : Xarray data
+    nrows : int
+        set number of rows
+    ncols : int, optional
+        set number of rows
+    figsize : tuple, optional
+        A tuple (width, height) of the figure in inches. 
+    bands: list, optional
+        A list that contains which three bands will represent the RGB channels
+    fontsize : int, optional
+        a number for setting legend title size.
+    savedir: str, optional
+        a directory path where will be used to save the image
+
+    Returns
+    -------
+    fig: a matplotlib firgure
+    """    
     if ncols is None:
         ncols = math.ceil(len(xarraydata.date) / nrows)
     
@@ -324,7 +361,7 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                     axs[xi,yi].imshow(datatoplot)
                     axs[xi,yi].set_axis_off()
                     axs[xi,yi].set_title(np.datetime_as_string(
-                        xarraydata.date.values[cont], unit='D'))
+                        xarraydata.date.values[cont], unit='D'), fontsize=fontsize)
                     axs[xi,yi].invert_xaxis()
 
                     cont+=1
@@ -332,7 +369,7 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                     axs[yi].imshow(datatoplot)
                     axs[yi].set_axis_off()
                     axs[yi].set_title(np.datetime_as_string(
-                        xarraydata.date.values[yi], unit='D'))
+                        xarraydata.date.values[yi], unit='D'), fontsize=fontsize)
                     axs[yi].invert_xaxis()
                     cont = yi+1
                 
@@ -384,14 +421,14 @@ def plot_heights(xrdata, num_rows = 2,
                      height_name = 'z',
                      bsl = None,
                      chanels_names = None, 
-                     
                      label_name = 'Height (cm)', 
                      fontsize=12,
-                     scalez = 100):
+                     scalez = 100,
+                     phquantile = 0.5):
     """
     create a figure showing a 2d profile from a 3d image reconstruction
     ----------
-    data : Numpy array
+    xrdata : xarray data
     num_rows : int, optional
         set number of rows
     num_columns : int, optional
@@ -406,12 +443,12 @@ def plot_heights(xrdata, num_rows = 2,
         a list with the labels for each plot..
     label_name : str, optional
         y axis label.
-    label_name : int, optional
-        a number for setting legend ticks size.
     fontsize: int, optional
         font size
     scalez: int, optional
         integer number for scaling height values
+    phquantile: int optional
+        decimal [0-1] determines the quantile for the height reference
 
     Returns
     -------
@@ -434,36 +471,37 @@ def plot_heights(xrdata, num_rows = 2,
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
+                xrtestdf = xrdatac.isel(date = count).to_dataframe()
 
+                altref = xrtestdf.reset_index().loc[:,('x','y','z','red','green','blue')].dropna() 
+                indcolors = [[r/255.,g/255.,b/255.] for r,g,b in zip(
+                altref.iloc[:,3].values, 
+                altref.iloc[:,4].values,
+                altref.iloc[:,5].values)]
+                xaxisref = np.nanquantile(altref.iloc[:,1],0.1)
+                yphreference = np.nanquantile(altref[height_name].values[altref[height_name].values>0],phquantile )
+                    
                 if num_rows>1:
-
-                    xrtestdf = xrdatac.isel(date = count).to_dataframe()
-
-                    altref = xrtestdf.reset_index().loc[:,('x','y','z','red','green','blue')].dropna() 
-                    indcolors = [[r/255.,g/255.,b/255.] for r,g,b in zip(
-                    altref.iloc[:,3].values, 
-                    altref.iloc[:,4].values,
-                    altref.iloc[:,5].values)]
-
                     ax[j,i].scatter(altref.iloc[:,1],
                                     altref.iloc[:,2],
-                                    c = indcolors)
-                    
-                    xaxisref = np.nanquantile(altref.iloc[:,1],0.1)
-                    yphreference = np.median(altref[height_name].values[altref[height_name].values>0])
+                                    c = indcolors)              
                     ax[j,i].axhline(y = yphreference, color = 'black', linestyle = '-')
                     ax[j,i].plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
                     ax[j,i].axhline(y = 0, color = 'black', linestyle = '-')
                     ax[j,i].set_title(vars[count], fontsize=fontsize, fontweight='bold')
-                    #ax[j,i].invert_xaxis()
-                    #ax[j,i].set_axis_off()
                     ax[j,i].set_xticks([])
-                    #ax[j,i].set_yticks([])
                     ax[j,i].set_ylim(vmin, vmax+vmaxl)
                     
                 else:
-                    ax[i].imshow(data[count])
-                    ax[i].set_axis_off()
+                    ax[i].scatter(altref.iloc[:,1],
+                                    altref.iloc[:,2],
+                                    c = indcolors) 
+                    ax[i].axhline(y = yphreference, color = 'black', linestyle = '-')
+                    ax[i].plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
+                    ax[i].axhline(y = 0, color = 'black', linestyle = '-')
+                    ax[i].set_title(vars[count], fontsize=fontsize, fontweight='bold')
+                    ax[i].set_xticks([])
+                    ax[i].set_ylim(vmin, vmax+vmaxl)
 
                 count +=1
             else:
