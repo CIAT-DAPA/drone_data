@@ -19,6 +19,7 @@ import pandas as pd
 import geopandas as gpd
 
 from utils import gis_functions as gf
+from utils.xr_functions import split_xarray_data
 
 import re
 
@@ -417,7 +418,7 @@ class DroneData:
 
     def split_into_tiles(self, polygons=False, **kargs):
 
-        self._tiles_pols = gf.split_xarray_data(self.drone_data, polygons=polygons, **kargs)
+        self._tiles_pols = split_xarray_data(self.drone_data, polygons=polygons, **kargs)
         
         print("the image was divided into {} tiles".format(len(self._tiles_pols)))
         

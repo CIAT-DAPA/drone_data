@@ -5,7 +5,7 @@ import xarray
 import numpy as np
 import geopandas as gpd
 from PIL import Image, ImageOps
-
+import pickle
 from itertools import product
 
 from rasterio import windows
@@ -324,49 +324,6 @@ def crop_using_windowslice(xr_data, window, transform):
     xrwindowsel.attrs['transform'] = transform
 
     return xrwindowsel
-
-
-def split_xarray_data(xr_data, polygons=True, **kargs):
-    """
-
-    :param xr_data: xarray data with x and y coordinates names
-    :param polygons: export polygons
-    :param kargs:
-         nrows:
-         ncols:
-         width:
-         height:
-        :param overlap: [0.0 - 1]
-        :return:
-    :return:
-    """
-    xarrayall = xr_data.copy()
-    m = get_tiles(xarrayall.attrs, **kargs)
-
-    boxes = []
-    orgnizedwidnowslist = []
-    i = 0
-    for window, transform in m:
-
-        #xrmasked = crop_using_windowslice(xarrayall, window, transform)
-        #imgslist.append(xrmasked)
-        orgnizedwidnowslist.append((window,transform))
-        if polygons:
-            coords = window.toranges()
-            xcoords = coords[1]
-            ycoords = coords[0]
-            boxes.append((i, Polygon([(xcoords[0], ycoords[0]), (xcoords[1], ycoords[0]),
-                                      (xcoords[1], ycoords[1]), (xcoords[0], ycoords[1])])))
-        i += 1
-    if polygons:
-        output = [m, boxes]
-    #else:
-    #    output = imgslist
-
-    else:
-        output = orgnizedwidnowslist
-    return output
-
 
 def get_data_perpoints(xrdata, gpdpoints, var_names=None, long=True):
     """
@@ -726,7 +683,29 @@ def resize_4dxarray(xrdata, new_size = None, name4d = 'date', **kwargs):
 
     return imgresized
 
-def rezize_3dxarray(xrdata, new_size, flip=True, interpolation = 'bilinear', blur= True, kernelsize = (5,5)):
+def resize_2dimg(image, newx, newy, flip=True, interpolation = 'bilinear', blur= False, kernelsize = (5,5)):
+    
+    intmethod = cv2.INTER_LINEAR
+    if interpolation == 'bilinear':
+        intmethod =  cv2.INTER_LINEAR
+    if interpolation == 'bicubic':
+        intmethod =  cv2.INTER_CUBIC
+    if interpolation == 'nearest':
+        intmethod = cv2.INTER_NEAREST
+    imageres = cv2.resize(image, (newx, newy), interpolation= intmethod)
+
+    if flip:
+        imageres = Image.fromarray(imageres)
+        imageres = np.array(ImageOps.flip(imageres))
+    if blur:
+        imageres = cv2.GaussianBlur(imageres,kernelsize,0)
+
+    return imageres
+
+def rezize_3dxarray(xrdata, new_size, bands = None,
+                    flip=True, 
+                    interpolation = 'bilinear', 
+                    blur= True, kernelsize = (5,5)):
 
     """
     a functions to resize a 3 dimesional xrdata 
@@ -746,15 +725,13 @@ def rezize_3dxarray(xrdata, new_size, flip=True, interpolation = 'bilinear', blu
     # TODO: create an image function for resize
 
     newx, newy = new_size
-    varnames = list(xrdata.keys())
+    if bands is None:
+        varnames = list(xrdata.keys())
+    else:
+        varnames = bands
+
     dims2d = list(xrdata.dims)
-    intmethod = cv2.INTER_LINEAR
-    if interpolation == 'bilinear':
-        intmethod =  cv2.INTER_LINEAR
-    if interpolation == 'bicubic':
-        intmethod =  cv2.INTER_CUBIC
-    if interpolation == 'nearest':
-        intmethod = cv2.INTER_NEAREST
+
 
     listnpdata = []
 
@@ -762,13 +739,9 @@ def rezize_3dxarray(xrdata, new_size, flip=True, interpolation = 'bilinear', blu
         #image = Image.fromarray(xrdata[varnames[i]].values.copy())
         #imageres = image.resize((newx, newy), Image.BILINEAR)
         image = xrdata[varnames[i]].values.copy()
-        imageres = cv2.resize(image, (newx, newy), interpolation= intmethod)
-
-        if flip:
-            imageres = Image.fromarray(imageres)
-            imageres = np.array(ImageOps.flip(imageres))
-        if blur:
-            imageres = cv2.GaussianBlur(imageres,kernelsize,0)
+        imageres = resize_2dimg(image, newx, newy, 
+                                interpolation = interpolation, 
+                                flip = flip, blur = blur, kernelsize = kernelsize)
 
         listnpdata.append(imageres)
 
@@ -787,7 +760,7 @@ def rezize_3dxarray(xrdata, new_size, flip=True, interpolation = 'bilinear', blu
 
 def stack_as4dxarray(xarraylist, 
                      dateslist=None, 
-                     sizemethod='max'):
+                     sizemethod='max', **kargs):
     if type(xarraylist) is not list:
         raise ValueError('Only list xarray are allowed')
 
@@ -803,7 +776,7 @@ def stack_as4dxarray(xarraylist,
 
     # transform each multiband xarray to a standar dims size
 
-    xarrayref = rezize_3dxarray(xarraylist[0], [sizex, sizexy])
+    xarrayref = rezize_3dxarray(xarraylist[0], [sizex, sizexy], **kargs)
     listdatesarray = []
     for i in range(len(xarraylist)):
         listdatesarray.append(resample_xarray(xarraylist[i], xarrayref))
@@ -1024,48 +997,6 @@ def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, c
     #return [poslongestdistance, x]
     return [r,c]
 
-
-def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
-    """
-    get nin max values from a list of xarray
-
-    ----------
-    Parameters
-    xrdatalist : list of xarrays
-    ----------
-    Returns
-    min_dict: a dictionary which contains the minimum values per band
-    max_dict: a dictionary which contains the maximum values per band
-    """
-    if not (type(xrdatalist) == list):
-        raise ValueError('xrdatalist must be a list of xarray')
-
-    min_dict = dict(zip(list(xrdatalist[0].keys()), [9999]*len(list(xrdatalist[0].keys()))))
-    max_dict = dict(zip(list(xrdatalist[0].keys()), [-9999]*len(list(xrdatalist[0].keys()))))
-
-    for idpol in range(len(xrdatalist)):
-        for varname in list(xrdatalist[idpol].keys()):
-            minval = min_dict[varname]
-            maxval = max_dict[varname]
-            if len(xrdatalist[idpol].dims.keys())>2:      
-                for i in range(xrdatalist[idpol].dims[name4d]):
-                    refvalue = xrdatalist[idpol][varname].isel({name4d:i}).values
-                    if minval>np.nanmin(refvalue):
-                        min_dict[varname] = np.nanmin(refvalue)
-                        minval = np.nanmin(refvalue)
-                    if maxval<np.nanmax(refvalue):
-                        max_dict[varname] = np.nanmax(refvalue)
-                        maxval = np.nanmax(refvalue)
-            else:
-                refvalue = xrdatalist[idpol][varname].values
-                if minval>np.nanmin(refvalue):
-                        min_dict[varname] = np.nanmin(refvalue)
-                        minval = np.nanmin(refvalue)
-                if maxval<np.nanmax(refvalue):
-                        max_dict[varname] = np.nanmax(refvalue)
-                        maxval = np.nanmax(refvalue)
-
-    return min_dict, max_dict
 
 
 from utils.image_functions import hist_3dimg
