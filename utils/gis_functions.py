@@ -74,6 +74,27 @@ def register_xarray(xarraydata, shift):
 
 def find_shift_between2xarray(offsetdata, refdata, band='red', clipboundaries=None, buffer=None,
                               method="convolution"):
+    """ 
+    This function will find an image displacement with respect to a reference image
+    The method apply a fourier transformation and find the cross correlation between both images
+
+    Parameters:
+    ----------
+    offsetdata: xarray data
+        This cube contains the information that is offset
+    refdata: xarray data
+        contains the image that will be used as referenced
+    band: str
+        the channel name that will be used as reference
+    clipboundaries: geopandas geometry, optional
+        A geometry that will help to analize a region in specific instead of all image
+    buffer: float, optional
+        if a buffer will be aplied to the mask geometry, this value is in meters.
+
+    Returns
+    -------
+    tuple with the displacement in x and y axis     
+    """
     if clipboundaries is not None:
         offsetdata = clip_xarraydata(offsetdata, clipboundaries, bands=[band], buffer=buffer)
         refdata = clip_xarraydata(refdata, clipboundaries, bands=[band], buffer=buffer)
@@ -213,18 +234,36 @@ def clip_xarraydata(xarraydata, gpdata, bands=None, buffer=None):
 
 
 def resample_xarray(xarraydata, xrreference, method='linear'):
-    refimagephase = xarraydata.interp(x=xrreference['x'].values,
+    """
+    Function to resize an xarray data and update its attributes based on another xarray reference 
+    this script is based on the xarray's interp() function
+    Parameters:
+    -------
+    xarraydata: xarray
+        contains the xarray that will be resized
+    xrreference: xarray
+        contains the dims that will be used as reference
+    method: str
+        method that will be used for interpolation
+        ({"linear", "nearest", "zero", "slinear", "quadratic", "cubic", "polynomial"}, default: "linear")
+    
+    Returns:
+    a xarray data with new dimensions
+    """
+
+    xrresampled = xarraydata.interp(x=xrreference['x'].values,
                                       y=xrreference['y'].values,
                                       method=method)
-    refimagephase.attrs['transform'] = transform_fromxy(
+
+    xrresampled.attrs['transform'] = transform_fromxy(
         xrreference.x.values,
         xrreference.y.values, xrreference.attrs['transform'][0])[0]
 
-    refimagephase.attrs['height'] = refimagephase[list(refimagephase.keys())[0]].shape[0]
-    refimagephase.attrs['width'] = refimagephase[list(refimagephase.keys())[0]].shape[1]
-    refimagephase.attrs['dtype'] = refimagephase[list(refimagephase.keys())[0]].data.dtype
+    xrresampled.attrs['height'] = xrresampled[list(xrresampled.keys())[0]].shape[0]
+    xrresampled.attrs['width'] = xrresampled[list(xrresampled.keys())[0]].shape[1]
+    xrresampled.attrs['dtype'] = xrresampled[list(xrresampled.keys())[0]].data.dtype
 
-    return refimagephase
+    return xrresampled
 
 
 def transform_fromxy(x, y, spr):
@@ -246,6 +285,7 @@ def transform_frombb(bb, spr):
 
 
 def rasterize_using_bb(gpdf, bb, crs, sres=0.01):
+    """This function create a rasterize vector, given a frame an dataframe values"""
     transform, imgsize = transform_frombb(bb, sres)
     rasterCrs = CRS.from_epsg(crs)
     rasterCrs.data
@@ -675,7 +715,7 @@ def resize_4dxarray(xrdata, new_size = None, name4d = 'date', **kwargs):
     #ydim, xdim = list(xrdata.dims.keys())[1],list(xrdata.dims.keys())[2]
     imgresized = []
     for dateoi in range(len(xrdata[name4d])):
-        imgresized.append(rezize_3dxarray(xrdata.isel(date = dateoi).copy(), new_size, **kwargs))
+        imgresized.append(resize_3dxarray(xrdata.isel(date = dateoi).copy(), new_size, **kwargs))
 
     imgresized = xarray.concat(imgresized, dim=name4d)
     imgresized[name4d] = xrdata[name4d].values
@@ -702,7 +742,7 @@ def resize_2dimg(image, newx, newy, flip=True, interpolation = 'bilinear', blur=
 
     return imageres
 
-def rezize_3dxarray(xrdata, new_size, bands = None,
+def resize_3dxarray(xrdata, new_size, bands = None,
                     flip=True, 
                     interpolation = 'bilinear', 
                     blur= True, kernelsize = (5,5)):
@@ -776,7 +816,7 @@ def stack_as4dxarray(xarraylist,
 
     # transform each multiband xarray to a standar dims size
 
-    xarrayref = rezize_3dxarray(xarraylist[0], [sizex, sizexy], **kargs)
+    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], **kargs)
     listdatesarray = []
     for i in range(len(xarraylist)):
         listdatesarray.append(resample_xarray(xarraylist[i], xarrayref))
@@ -905,11 +945,15 @@ def impute_4dxarray(xrdata, bandstofill=None, nabandmaskname = None,method='knn'
 
 def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'knn', nanvalue = None,**kargs):
     """
-    fill a 2d array using an imputation method
-
+    this function will fill a 2d array using an imputation method
     ----------
     Parameters
-    xrdata : xrdata
+    xrdata : xarray data
+        containes the data
+    bands : list, optional
+        bands or channels that will be filled, if there is not any assigned
+        all channels will be processed
+    imputation_method:  list, optional
     ----------
     Returns
     xarray : an xarray with all the channels filled using the imputation method

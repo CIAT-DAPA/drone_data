@@ -124,8 +124,30 @@ def run_parallel_mergemissions_perpol(j, SHP_PATH, rgb_path = None, ms_path=None
     #return alldata 
 
 def fromxyz_file_to_xarray(xyzpaths, gpdpolygon, sres = 0.012,multiprocess= False, nworkers=2):
+    """
+        This function will create a 2D image based on a 3D cloud points reconstruction
+    
+    Parameters:
+    ----------
+    
+    xyzpaths: list
+        list of filenames with .xyz extension that contained the cloud points information
+    gpdpolygon: polygon
+        this is a geopandas geometry that is used to indicate which region will be reconstructed 
+    sres: float, optional
+        this number indicates the meter resolution that will have the image
+    multiprocess: boolean, optional
+        indicates if the process will be parallized, default is False
+    nworkers: integer, optional
+        how many cores will be used for paralleizeing the process
+    
+    Returns:
+    ----------
+    xarray file with all data plus a new variable called z that conatins the 3D information
 
-    points_perplant = CloudPoints(xyzpaths, gpdpolygon, multiprocess= multiprocess, nworkers=nworkers)
+    """
+    points_perplant = CloudPoints(xyzpaths, gpdpolygon, multiprocess= multiprocess, 
+                                  nworkers=nworkers)
     #points_perplant.remove_baseline(method = baselinemethod)
 
     points_perplant = points_perplant.to_xarray(sp_res= sres)

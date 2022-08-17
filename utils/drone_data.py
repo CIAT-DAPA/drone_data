@@ -463,7 +463,11 @@ class DroneData:
             if inputpath.endswith('.tif'):
                 self._files_path = [inputpath for i in range(len(self._bands))]
             else:
-                imgfiles = glob.glob(inputpath + "*.tif")[0]
+                try:
+                    imgfiles = glob.glob(inputpath + "*.tif")[0]
+                except:
+                    raise ValueError(f"There are no tiff files in this dir {inputpath}")
+                    
                 self._files_path = [imgfiles for i in range(len(self._bands))]
 
 

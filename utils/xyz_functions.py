@@ -130,7 +130,9 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                                columns_name = ["z", "red","green", "blue"],
                                spatial_res = 0.01,
                                dimension_name= "date",
-                               newdim_values = None):
+                               newdim_values = None,
+                               rasterize = True,
+                               inter_method = 'nearest'):
 
     trans, _ = transform_frombb(bounds, spatial_res)
     totallength = len(columns_name)+2
@@ -138,8 +140,11 @@ def from_cloudpoints_to_xarray(dfcloudlist,
     for j in range(len(dfcloudlist)):
         list_rasters = []
         for i in range(2,totallength):
-            list_rasters.append(rasterize_using_bb(dfcloudlist[j].iloc[:,[i,totallength]], 
-                                                   bounds, crs = coords_system, sres = spatial_res))
+            if rasterize:
+                rasterinterpolated = rasterize_using_bb(dfcloudlist[j].iloc[:,[i,totallength]], 
+                                                   bounds, crs = coords_system, sres = spatial_res)
+
+            list_rasters.append(rasterinterpolated)
 
         xarraylist.append(list_tif_2xarray(list_rasters, trans, 
                                            crs = coords_system,

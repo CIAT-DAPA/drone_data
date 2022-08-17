@@ -152,7 +152,7 @@ def from_xarray_2_rgbimage(xarraydata,
                            export_as_jpg=False,
                            ouputpath=None, 
                            normalize = True,
-                           newsize = None):
+                           newsize = None, verbose = False):
 
 
     if ouputpath is None:
@@ -180,8 +180,8 @@ def from_xarray_2_rgbimage(xarraydata,
             ouputpath = ouputpath + ".jpg"
 
         image.save(ouputpath)
-
-        print("Image saved: {}".format(ouputpath))
+        if verbose:
+            print("Image saved: {}".format(ouputpath))
 
     return image
 
