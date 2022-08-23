@@ -33,10 +33,24 @@ from sklearn.impute import KNNImputer
 def scale_255(data):
     return ((data - data.min()) * (1 / (data.max() - data.min()) * 255)).astype('uint8')
 
-
+## basic
 def xy_fromtransform(transform, width, height):
     """
-    
+    this function is for create longitude and latitude range values from the 
+    spatial transformation matrix
+
+    Parameters:
+    ----------
+    transform: list
+        spatial tranform matrix
+    width: int
+        width size
+    height: int
+        heigth size
+
+    Returns:
+    ----------
+    two list, range of unique values for x and y
     """
     T0 = transform
     T1 = T0 * affine.Affine.translation(0.5, 0.5)
@@ -142,6 +156,9 @@ def find_shift_between2xarray(offsetdata, refdata, band='red', clipboundaries=No
 
 # adapated from https://github.com/Devyanshu/image-split-with-overlap
 def start_points(size, split_size, overlap=0.0):
+    """
+    this functions initalize the tile in a corner
+    """
     points = [0]
     stride = int(split_size * (1 - overlap))
     counter = 1
@@ -284,13 +301,13 @@ def transform_frombb(bb, spr):
     return transform_fromxy(xRange, yRange, spr)
 
 
-def rasterize_using_bb(gpdf, bb, crs, sres=0.01):
+def rasterize_using_bb(values, points_geometry, transform, imgsize):
     """This function create a rasterize vector, given a frame an dataframe values"""
-    transform, imgsize = transform_frombb(bb, sres)
-    rasterCrs = CRS.from_epsg(crs)
-    rasterCrs.data
+    
+    #rasterCrs = CRS.from_epsg(crs)
+    #rasterCrs.data
 
-    return (features.rasterize(zip(gpdf.geometry, gpdf.iloc[:, 0].values),
+    return (features.rasterize(zip(points_geometry, values),
                                out_shape=[imgsize[0], imgsize[1]], transform=transform))
 
 

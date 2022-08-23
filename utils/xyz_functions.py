@@ -15,6 +15,8 @@ from scipy.stats import gaussian_kde
 from utils.classification_functions import kmeans_images
 from utils.gis_functions import transform_frombb, rasterize_using_bb,list_tif_2xarray
 from utils.plt_functions import plot_2d_cloudpoints
+from sklearn.neighbors import KNeighborsRegressor
+from pykrige.ok import OrdinaryKriging
 
 
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
@@ -124,6 +126,11 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_pro
     
     return bsl
 
+
+#def interpolate_cloud_points(
+#    dfcloudlist, image_shape,
+#)
+
 def from_cloudpoints_to_xarray(dfcloudlist, 
                                bounds,
                                coords_system,
@@ -131,19 +138,33 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                                spatial_res = 0.01,
                                dimension_name= "date",
                                newdim_values = None,
-                               rasterize = True,
-                               inter_method = 'nearest'):
+                               interpolate = False,
+                               inter_method = 'KNN', **kargs):
 
-    trans, _ = transform_frombb(bounds, spatial_res)
+    trans, imgsize = transform_frombb(bounds, spatial_res)
     totallength = len(columns_name)+2
     xarraylist = []
     for j in range(len(dfcloudlist)):
         list_rasters = []
-        for i in range(2,totallength):
-            if rasterize:
-                rasterinterpolated = rasterize_using_bb(dfcloudlist[j].iloc[:,[i,totallength]], 
-                                                   bounds, crs = coords_system, sres = spatial_res)
+        xycoords = dfcloudlist[0][[1,0]].values.copy()
 
+        for i in range(2,totallength):
+            valuestorasterize = dfcloudlist[j].iloc[:,[i]].iloc[:, 0].values
+            rasterinterpolated = rasterize_using_bb(valuestorasterize, 
+                                                    dfcloudlist[j].geometry, 
+                                                    transform = trans, imgsize =imgsize)
+
+            
+            if interpolate:
+                
+                rasterinterpolated = points_rasterinterpolated(
+                    (xycoords.T[0],xycoords.T[1],valuestorasterize), 
+                    transform = trans, 
+                    rastershape = rasterinterpolated.shape,
+                    inter_method= inter_method,
+                    **kargs)
+
+     
             list_rasters.append(rasterinterpolated)
 
         xarraylist.append(list_tif_2xarray(list_rasters, trans, 
@@ -229,7 +250,7 @@ def remove_bsl_toxarray(xarraydata, baselineval, scale_height = 100):
     
 
 def calculate_angle_twovectors(v1,v2):
-    
+
     dot_product = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     return( np.arccos(dot_product))
 
@@ -247,17 +268,120 @@ def clip_cloudpoints_as_gpd(file_name, bb, crs, buffer = 0.1, step = 100, ext = 
 
     return dfcl.loc[dfcl.within(bb)]
 
+def points_to_raster_interp(points, grid, method = "KNN", 
+                            knn = 5, weights = "distance",
+                            variogram_model = 'hole-effect'):
+    """
+    this function interpolates points where the surlt is an image
+
+    Parameters:
+    ----------
+    points: list
+        this a list that contains three list, points in x, points in y and the 
+        values to be interpolated
+    grid: list
+        a list that contains the meshgrids in x and y.
+    method: str, optional
+        a string that describes which interpolated method will be used, 
+        currently only KNN and ordinary_kriging are available
+
+    
+    Parameters:
+    ----------
+    interpolated image
+
+    """
+    if len(grid) == 2:
+        xx = grid[0]
+        yy = grid[1]
+    else:
+        raise ValueError("Meshgrid must have values for x and y")
+    if len(points) == 3:
+        coordsx = points[0]
+        coordsy = points[1]
+        values = points[2]
+    else:
+        raise ValueError("Points is a list that has three lists, one ofr x, y and Zvalues")
+
+    if method == "KNN":
+        regressor = KNeighborsRegressor(n_neighbors = knn, weights = weights)
+        regressor.fit(list(zip(coordsx,coordsy)), values)
+            ## prediction
+        imgpredicted = regressor.predict(
+            np.array((xx.ravel(),yy.ravel())).T).reshape(
+                xx.shape)
+
+    if method == "ordinary_kriging":
+        ok = OrdinaryKriging(
+            coordsx,
+            coordsy,
+            values,
+            variogram_model = variogram_model,
+        )
+        ## prediction
+        imgpredicted, _ = ok.execute("grid", 
+                np.unique(xx.ravel()),np.unique(yy.ravel()))
+        del ok
+        imgpredicted = imgpredicted.swapaxes(0,1)
+
+    return imgpredicted
+
+
+def points_rasterinterpolated(points, transform, rastershape, inter_method = 'KNN', **kargs):
+        from utils.gis_functions import coordinates_fromtransform
+        x, y = coordinates_fromtransform(transform,
+                            [rastershape[1], rastershape[0]])
+
+        xx,yy = np.meshgrid(np.sort(np.unique(x)), np.sort(np.unique(y)))
+
+        rastinterp = points_to_raster_interp(
+                            points,
+                            (yy,xx), method = inter_method, **kargs)
+
+        return rastinterp
+                
+
 
 class CloudPoints:
 
-    def to_xarray(self, sp_res = 0.01, newdim_values = None):
-        return from_cloudpoints_to_xarray(self.cloud_points,
+    def to_xarray(self, sp_res = 0.01, newdim_values = None, interpolate = False, inter_method = "KNN"):
+        """
+        This function will create a spatial raster with the cloud points
+        the spatial image can be obtained by rasterizing the vector points, or applying 
+        a spatial interpolation 
+
+        Parameters:
+        ----------
+        sp_res: float, optional
+            final spatial resolution used for vector rasterization
+        newdim_values: str, optional
+            reasign new names for the xarray dimensions
+        interpolate: str, optional
+            which method will be applied to get the spatial image 
+            ['rasterize', 'interpolation'], default rasterize
+
+        """
+        
+        rasterimg = from_cloudpoints_to_xarray(self.cloud_points,
                                    self.boundaries, 
                                    self._crs,
                                    self.variables_names,
                                    spatial_res = sp_res,
-                                   newdim_values = newdim_values)
+                                   newdim_values = newdim_values,
+                                   interpolate = interpolate,
+                                   inter_method = inter_method)
+                                   
+        #elif method == 'interpolation':
+        ### TODO: interpolation metod knn 
+        """
+        from sklearn.neighbors import KNeighborsRegressor
+        zvalues = (points_perplant.cloud_points[0][2].values.copy()-bsl)*100
+        xycoords = points_perplant.cloud_points[0][[1,0]].values.copy()
+        knn_regressor = KNeighborsRegressor(n_neighbors = 7, weights = "distance")
+        knn_regressor.fit(xycoords, zvalues)
 
+        """
+        return rasterimg
 
     def remove_baseline(self, method= None, 
                         cloud_reference = 0, scale_height = 100, 
@@ -346,5 +470,4 @@ class CloudPoints:
                 cllist.assign_coords(date = [m+1 for m in range(lenimgs)])
 
         self.cloud_points = cllist
-
 

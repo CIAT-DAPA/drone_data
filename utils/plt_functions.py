@@ -50,12 +50,26 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinv
 
 
 
-def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0):
+def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z'):
+    """
+    this function creates a 3D interactive function from a 2d image using xarra data
+
+    Parameters:
+    ----------
+    xrdata : xarray data
+    scale_xy: int, optional
+        factor to scale the x and y axis
+    nonvalue: int, optional
+        a value that represent na pixels
+    zaxisname: str, optional
+        the z variable name
+        
+    """
 
     plotdf = xrdata.to_dataframe().copy()
     ycoords = np.array([float("{}.{}".format(str(i[0]).split('.')[0][-3:], str(i[0]).split('.')[1])) for i in plotdf.index.values])*scale_xy
     xcoords = np.array([float("{}.{}".format(str(i[1]).split('.')[0][-3:], str(i[1]).split('.')[1]))  for i in plotdf.index.values])*scale_xy
-    zcoords = plotdf.z.values
+    zcoords = plotdf[zaxisname].values
 
     nonvaluemask = zcoords.ravel()>nonvalue
 

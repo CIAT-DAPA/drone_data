@@ -196,9 +196,9 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None,
     # process xyz files if there is a list of files path
     if xyzfiles is not None:
         pathxyz = xyzfiles[id]
-    
+        geombufferxyz = roi.geometry.values.buffer(bufferdef, join_style=2)
         xrdata= fromxyz_file_to_xarray([pathxyz], 
-                                      roi.loc[:,'geometry'].iloc[0],
+                                      geombufferxyz[0],
                                       sres=xyz_spatialres)
 
         xrdata = xrdata.isel(date = 0)
