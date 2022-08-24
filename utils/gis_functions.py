@@ -332,7 +332,9 @@ def coordinates_fromtransform(transform, imgsize):
 
 
 def list_tif_2xarray(listraster, transform, crs, nodata=0, bands_names=None):
-
+    """
+    This function transform rater layers to a xarray data
+    """
     metadata = {
         'transform': transform,
         'crs': crs,

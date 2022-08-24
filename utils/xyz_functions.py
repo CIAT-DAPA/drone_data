@@ -62,9 +62,18 @@ def valid(chunks, bb, buffer= 0.0):
             break
 
 def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz',mindata = 100):
+    """
+    a function to read a cloud points file using sptial boundaries
+
+    """
     data = True
-    file_pathfn = os.listdir(file_path)
-    xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
+    if file_path.endswith('.xyz'):
+        folders = os.path.split(file_path)
+        file_path = folders[0]
+        xyzfilenames = [folders[-1]]
+    else:
+        file_pathfn = os.listdir(file_path)
+        xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
     
     count = 0
     while data:
@@ -343,6 +352,26 @@ def points_rasterinterpolated(points, transform, rastershape, inter_method = 'KN
 
 
 class CloudPoints:
+    """
+    A class used to process XYZ files, this reads the file and then based on a boundary vector file
+    returns shrink the clou points to that region only. 
+
+    ...
+
+    Attributes
+    ----------
+    boundaries : geopandas geometry
+        a formatted string to print out what the animal says
+    variables_names : list
+        the name of the features that are in the XYZ file
+    cloud_points : pandas
+        a dataframe table that contains the cloud points for an espectific bondary.
+
+    Methods
+    -------
+    to_xarray(sp_res=float)
+        transform the cloud points file to a geospatial raster
+    """
 
     def to_xarray(self, sp_res = 0.01, newdim_values = None, interpolate = False, inter_method = "KNN"):
         """
