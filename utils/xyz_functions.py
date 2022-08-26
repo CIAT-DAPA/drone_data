@@ -148,14 +148,17 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                                dimension_name= "date",
                                newdim_values = None,
                                interpolate = False,
-                               inter_method = 'KNN', **kargs):
+                               inter_method = 'KNN',
+                               knn = 5, weights = "distance",
+                               variogram_model = 'exponential',
+                               ):
 
     trans, imgsize = transform_frombb(bounds, spatial_res)
     totallength = len(columns_name)+2
     xarraylist = []
     for j in range(len(dfcloudlist)):
         list_rasters = []
-        xycoords = dfcloudlist[0][[1,0]].values.copy()
+        xycoords = dfcloudlist[j][[1,0]].values.copy()
 
         for i in range(2,totallength):
             valuestorasterize = dfcloudlist[j].iloc[:,[i]].iloc[:, 0].values
@@ -171,7 +174,8 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                     transform = trans, 
                     rastershape = rasterinterpolated.shape,
                     inter_method= inter_method,
-                    **kargs)
+                               knn = knn, weights = weights,
+                               variogram_model = variogram_model)
 
      
             list_rasters.append(rasterinterpolated)
@@ -293,7 +297,8 @@ def points_to_raster_interp(points, grid, method = "KNN",
     method: str, optional
         a string that describes which interpolated method will be used, 
         currently only KNN and ordinary_kriging are available
-
+    variogram_model: str, optional
+        linear, exponential, power, hole-effect
     
     Parameters:
     ----------
@@ -319,7 +324,8 @@ def points_to_raster_interp(points, grid, method = "KNN",
         imgpredicted = regressor.predict(
             np.array((xx.ravel(),yy.ravel())).T).reshape(
                 xx.shape)
-
+                
+    #https://mmaelicke.github.io/scikit-gstat/_modules/skgstat/Kriging.html
     if method == "ordinary_kriging":
         ok = OrdinaryKriging(
             coordsx,
@@ -373,7 +379,11 @@ class CloudPoints:
         transform the cloud points file to a geospatial raster
     """
 
-    def to_xarray(self, sp_res = 0.01, newdim_values = None, interpolate = False, inter_method = "KNN"):
+    def to_xarray(self, sp_res = 0.01, 
+                  newdim_values = None, 
+                  interpolate = False, 
+                  inter_method = "KNN",
+                  **kargs):
         """
         This function will create a spatial raster with the cloud points
         the spatial image can be obtained by rasterizing the vector points, or applying 
@@ -388,6 +398,13 @@ class CloudPoints:
         interpolate: str, optional
             which method will be applied to get the spatial image 
             ['rasterize', 'interpolation'], default rasterize
+        inter_method: str, optional
+            Set the interpolation method, currently there are available
+             k-nearest neighbors 'KNN" and Ordinary-Kriging 'ordinary_kriging'
+        
+        Returns:
+        ----------
+        xarray file that contains the raster image
 
         """
         
@@ -398,7 +415,8 @@ class CloudPoints:
                                    spatial_res = sp_res,
                                    newdim_values = newdim_values,
                                    interpolate = interpolate,
-                                   inter_method = inter_method)
+                                   inter_method = inter_method,
+                                   **kargs)
                                    
         #elif method == 'interpolation':
         ### TODO: interpolation metod knn 
@@ -433,8 +451,8 @@ class CloudPoints:
 
                 self.cloud_points[i] = data
 
-    def plot_2d_cloudpoints(self, index = 0, figsize = (10,6), xaxis = "latitude"):
-        return plot_2d_cloudpoints(self.cloud_points[index], figsize, xaxis)
+    def plot_2d_cloudpoints(self, index = 0, figsize = (10,6), xaxis = "latitude",fontsize = 12):
+        return plot_2d_cloudpoints(self.cloud_points[index], figsize, xaxis,fontsize=fontsize)
 
     def __init__(self, 
                     xyzfile,

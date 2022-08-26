@@ -1,10 +1,49 @@
 
+from ast import Raise
 import numpy as np
 import tqdm
 import pickle
-
+import xarray
 from utils.gis_functions import get_tiles
 from shapely.geometry import Polygon
+import richdem as rd
+
+def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees', name4d = 'date'):
+    """
+    Function to calculate terrain attributes from dem layer
+    """
+    if dem_varname not in list(xr_data.keys()):
+        raise ValueError('there is not variable called {dem_varname} in the xarray')
+    
+    terrainattrslist = []
+    #name4d = list(xrdata.dims.keys())[0]
+    if len(xr_data.dims.keys())>2:
+        for dateoi in range(len(xr_data[name4d])):
+            datadem = xr_data[dem_varname].isel({name4d:dateoi}).copy()
+            datadem = rd.rdarray(datadem, no_data=0)
+            terrvalues = rd.TerrainAttribute(datadem,attrib= attrib)
+            terrainattrslist.append(terrvalues)
+                    
+        xrimg = xarray.DataArray(terrainattrslist)
+        vars = list(xr_data.dims.keys())
+        
+        vars = [vars[i] for i in range(len(vars)) if i != vars.index(name4d)]
+
+        xrimg.name = attrib
+        xrimg = xrimg.rename({'dim_0': name4d, 
+                            'dim_1': vars[0],
+                            'dim_2': vars[1]})
+    else:
+        datadem = xarray.DataArray(xr_data[dem_varname].copy())
+        datadem = rd.rdarray(datadem, no_data=0)
+        terrvalues = rd.TerrainAttribute(datadem,attrib= attrib)
+
+        vars = list(xr_data.dims.keys())
+        xrimg.name = attrib
+        xrimg = xrimg.rename({'dim_0': vars[0], 
+                            'dim_1': vars[1]})
+
+    return xr_data.merge(xrimg)
 
 
 def split_xarray_data(xr_data, polygons=True, **kargs):

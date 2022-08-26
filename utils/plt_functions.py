@@ -95,8 +95,15 @@ def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z'):
     fig.show()
 
 
-def plot_2d_cloudpoints(clpoints, figsize = (10,6), xaxis = "latitude"):
-    
+def plot_2d_cloudpoints(clpoints, figsize = (10,6), xaxis = "latitude", fontsize = 18):
+    """
+    This function create a fron or perfil plot from a cloud points file
+
+    Parameters:
+    ----------
+    clpoints: pandas dataframe
+        dataframe that contains the points values
+    """
 
     indcolors = [[r/255.,g/255.,b/255.] for r,g,b in zip(
                     clpoints.iloc[:,3].values, 
@@ -113,7 +120,11 @@ def plot_2d_cloudpoints(clpoints, figsize = (10,6), xaxis = "latitude"):
     plt.scatter(clpoints.iloc[:,loccolumn],
                 clpoints.iloc[:,2],
                 c = indcolors)
-    
+    plt.yticks(fontsize=fontsize)
+    plt.ylabel('Altitude above sea level (m)\n', fontsize=fontsize+3)
+
+    plt.xticks(fontsize=fontsize)
+    plt.xlabel(f'{xaxis}\n', fontsize=fontsize+3)
 
     plt.show()
 
@@ -261,13 +272,13 @@ def plot_multichanels(data, num_rows = 2,
         for i in range(num_columns):
             if count < len(vars):
 
-                if num_rows>1:
+                if num_rows>1 and num_columns > 1:
                     ax[j,i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
                     ax[j,i].set_title(vars[count], fontsize=fontsize)
                     ax[j,i].invert_xaxis()
                     ax[j,i].set_axis_off()
-                else:
-                    ax[i].imshow(data[count])
+                elif num_rows == 1 or num_columns == 1:
+                    ax[i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
                     ax[i].set_title(vars[count], fontsize=fontsize)
                     ax[i].invert_xaxis()
                     ax[i].set_axis_off()
@@ -476,7 +487,9 @@ def plot_heights(xrdata, num_rows = 2,
     vars = chanels_names
     xrdatac = xrdata.copy()
     if bsl is not None:
-        xrdatac[height_name] = (xrdatac[height_name] - bsl)*scalez 
+        xrdatac[height_name] = (xrdatac[height_name] - bsl)
+        xrdatac[height_name] = xrdatac[height_name].where(xrdatac[height_name] > 0, np.nan)
+        xrdatac[height_name] = xrdatac[height_name]*scalez 
 
     data = xrdatac[height_name].values
     vmin = np.nanmin(data)
