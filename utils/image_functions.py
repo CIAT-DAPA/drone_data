@@ -242,7 +242,6 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
 
 import cv2
 
-
 def cv2_clipped_zoom(img, zoom_factor=0):
 
     """

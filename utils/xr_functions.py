@@ -187,7 +187,7 @@ def get_meanstd_fromlistxarray(xrdatalist, name4d = 'date'):
 
     mean_dict = dict(zip(list(xrdatalist[0].keys()), [9999]*len(list(xrdatalist[0].keys()))))
     std_dict = dict(zip(list(xrdatalist[0].keys()), [-9999]*len(list(xrdatalist[0].keys()))))
-    for varname in list(xrdatalist[idpol].keys()):
+    for varname in list(xrdatalist[0].keys()):
         datapervar = []
         for idpol in range(len(xrdatalist)):
             
@@ -198,7 +198,6 @@ def get_meanstd_fromlistxarray(xrdatalist, name4d = 'date'):
         std_dict[varname] = np.nanstd(datapervar)
 
     return mean_dict, std_dict
-
 
 
 

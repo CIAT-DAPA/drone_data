@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 from dateutil.parser import parse
 import re
+import random
+
 
 def is_date(string, fuzzy=False):
     """
@@ -266,3 +268,32 @@ def get_vi_ts(df, npattern = ['ndvi']):
         tsdata = tsdata.filter(regex=i)
 
     return np.expand_dims(tsdata.values,2)
+
+
+
+class FolderWithImages(object):
+    @property
+    def files_in_folder(self):
+        
+        return self._look_for_images()
+    
+    def __init__(self, path,suffix = '.jpg', shuffle = False, seed = None) -> None:
+        
+        self.path = path
+        self.imgs_suffix = suffix
+        self.shuffle = shuffle
+        self.seed = seed
+    
+    def _look_for_images(self):
+        filesinfolder = [i for i in os.listdir(self.path) if i.endswith(self.imgs_suffix)]
+        if len(filesinfolder)==0:
+            raise ValueError(f'there are not images in this {self.path} folder')
+
+        if self.seed is not None and self.shuffle:
+            random.seed(self.seed)
+            random.shuffle(filesinfolder)
+
+        elif self.shuffle:
+            random.shuffle(filesinfolder)
+
+        return filesinfolder
