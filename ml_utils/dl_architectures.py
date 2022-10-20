@@ -6,6 +6,73 @@ from tensorflow.keras import layers
 
 
 
+def ConvLSTM_Model_zprof(frames, channels, width, height, initfilters = 128):
+  
+    inputs  = keras.Input(shape=(frames, width, height,channels))
+    
+    first_ConvLSTM = layers.ConvLSTM2D(filters=initfilters, kernel_size=(3, 3)
+                       , data_format='channels_last'
+                       , activation='relu'
+                       #, recurrent_activation='hard_sigmoid'
+                       , padding='same', return_sequences=True)(inputs)
+
+    first_batchnorm = layers.BatchNormalization()(first_ConvLSTM)
+    x = tf.keras.layers.MaxPool3D(pool_size=(1,3,3), strides=2, padding='same')(first_batchnorm)
+    x = layers.Dropout(0.5)(x)
+    second_ConvLSTM = layers.ConvLSTM2D(filters=initfilters//2, kernel_size=(3, 3)
+                        , data_format='channels_last'
+                        , activation='relu'
+                        , padding='same', return_sequences=True)(x)
+    second_batchnorm = layers.BatchNormalization()(second_ConvLSTM)
+    x = tf.keras.layers.MaxPool3D(pool_size=(3,3,3), strides=2, padding='same')(second_batchnorm)
+    x = layers.Dropout(0.5)(x)
+    out_shape = x.shape
+    print('====Model shape: ', out_shape)
+
+
+    batchnorm = layers.BatchNormalization()(second_batchnorm)
+    x = tf.keras.layers.MaxPool3D(pool_size=5, strides=2, padding='same')(batchnorm)
+    
+    x = layers.Dropout(0.5)(x)
+    out_shape = x.shape
+    x = layers.GlobalAveragePooling3D()(x)
+    x = layers.Dropout(0.5)(x)
+    out_shape = x.shape
+    print('====Model shape: ', out_shape)
+    #reshaped = layers.Reshape((out_shape[1], out_shape[2] * out_shape[3] * out_shape[4]))(x)
+
+#    x = layers.LSTM(128, return_sequences=False,kernel_regularizer=tf.keras.regularizers.L1(0.01),
+#                                                   activity_regularizer=tf.keras.regularizers.L2(0.01))(reshaped)
+    #x = layers.LSTM(128, return_sequences=False)(reshaped)
+
+    #x = layers.Dropout(0.5)(second_BatchNormalization)
+
+    #x = layers.Conv3D(
+    #    filters=128, kernel_size=(3, 3, 3), activation="relu", padding="same", 
+    #    strides=2
+        
+    #)(x)
+    #x = layers.BatchNormalization()(x)
+    #x = layers.GlobalAveragePooling3D()(x)
+    #x = layers.Dropout(0.5)(x)
+    #x = layers.TimeDistributed(layers.Flatten())(x)
+    x = layers.Flatten()(x)
+    out_shape = x.shape
+    print('====Model shape: ', out_shape)
+
+    #x = layers.Dense(units=2056, activation="relu")(x)
+    #x = layers.Dense(units=1028, activation="linear")(x)
+
+    x = layers.Dense(units=512, activation="linear",
+                    kernel_regularizer=tf.keras.regularizers.L1(0.01))(x)
+
+    x = layers.Dense(units=256, activation="linear")(x)
+
+    x = layers.Dropout(0.5)(x)
+
+    return keras.Model(inputs, x, name="convlstm")
+    
+
 def set_Conv3d_ConvLstm_model(width=150, height=150, depth = 5, channels = 8, initfilters = 64):
     """Build a 3D convolutional neural network model."""
     #data_format="NDHWC"
@@ -89,9 +156,9 @@ def ConvLSTM_Model(frames, channels, width, height, initfilters = 128):
                        , padding='same', return_sequences=True)(inputs)
 
     first_batchnorm = layers.BatchNormalization()(first_ConvLSTM)
-    x = tf.keras.layers.MaxPool3D(pool_size=(1,2,2), strides=1, padding='same')(first_batchnorm)
+    x = tf.keras.layers.MaxPool3D(pool_size=(1,2,2), strides=2, padding='same')(first_batchnorm)
     x = layers.Dropout(0.5)(x)
-    second_ConvLSTM = layers.ConvLSTM2D(filters=32, kernel_size=(3, 3)
+    second_ConvLSTM = layers.ConvLSTM2D(filters=initfilters//2, kernel_size=(3, 3)
                         , data_format='channels_last'
                         , activation='relu'
                         , padding='same', return_sequences=True)(x)
@@ -100,13 +167,13 @@ def ConvLSTM_Model(frames, channels, width, height, initfilters = 128):
     x = layers.Dropout(0.5)(x)
     out_shape = x.shape
     print('====Model shape: ', out_shape)
-    third_ConvLSTM = layers.ConvLSTM2D(filters=16, kernel_size=(5, 5)
-                        , data_format='channels_last'
-                        , activation='relu'
-                        , padding='same', return_sequences=True)(x)
+    #third_ConvLSTM = layers.ConvLSTM2D(filters=16, kernel_size=(5, 5)
+    #                    , data_format='channels_last'
+    #                    , activation='relu'
+    #                    , padding='same', return_sequences=True)(x)
 
-    batchnorm = layers.BatchNormalization()(third_ConvLSTM)
-    x = tf.keras.layers.MaxPool3D(pool_size=(5,5,5), strides=2, padding='same')(batchnorm)
+    batchnorm = layers.BatchNormalization()(second_batchnorm)
+    x = tf.keras.layers.MaxPool3D(pool_size=5, strides=2, padding='same')(batchnorm)
     
     x = layers.Dropout(0.5)(x)
     out_shape = x.shape
@@ -700,3 +767,25 @@ def InceptionV4(width=150, height=150, depth = 5, channels = 8):
     model = keras.Model(inputs = input_layer , outputs = x , name ='Inception-V4')
     
     return model
+
+
+def concat_3Dmodel(shapes, initfilters = 32):
+    depth,  width, height, channels = shapes[0]
+    model1 = set_Conv3dmodel(width=width, height=height, depth=depth, 
+                                 channels = channels,
+                                 initfilters = initfilters)
+
+    depth, width, height, channels = shapes[1]
+    model2 = set_Conv3dmodel(width=width, height=height, depth=depth, 
+                                    channels = channels,
+                                    initfilters= initfilters)
+
+
+    modelconc = layers.concatenate([model1.output, model2.output])
+
+    return keras.Model(inputs=[model1.input,
+                           model2.input], outputs=modelconc, name = '3dcnn_doubleinput')
+
+
+
+

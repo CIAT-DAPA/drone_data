@@ -473,37 +473,81 @@ def rmse_m(y_true, y_pred):
 
 
 def built_dlmodel(inputsshape,dlmodelname, noutputs = 1, 
-                   final_activation = "linear", initialfilters = 64, finaldense = 512,finaldrop = 0.4):
+                   final_activation = "linear", initialfilters = 64, 
+                   finaldense = 512,finaldrop = 0.4):
+                   
     tf.keras.backend.clear_session()
     model = None
     if dlmodelname == "conv3d":
         depth, width, height, channels = inputsshape
         inputm = set_Conv3dmodel(width=width, height=height, depth=depth, 
                                  channels = channels,initfilters = initialfilters)
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+        inputsmodel = inputm.input
 
     if dlmodelname == "conv3dlstm":
         # dates, channels, pixels_x, pixels_y
         depth, width, height, channels = inputsshape
         inputm = ConvLSTM_Model(frames=depth, channels=channels, 
                                 width=width, height=height,initfilters = initialfilters)
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+        inputsmodel = inputm.input
 
     if dlmodelname == "alexnet3d":
         depth, width, height, channels = inputsshape
         
         inputm = alexnet3d(width=width, height=height, depth=depth, channels = channels)
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+        inputsmodel = inputm.input
+
 
     if dlmodelname == "resnet3d":
         depth, width, height, channels = inputsshape
         inputm = ResNet34_3d(width=width, height=height, depth=depth, channels = channels)
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+        inputsmodel = inputm.input
 
     if dlmodelname == "conv_conv3dlstm":
         depth, width, height, channels = inputsshape
         inputm = set_Conv3d_ConvLstm_model(width=width, height=height, depth=depth, channels = channels)
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+        inputsmodel = inputm.input
 
-    x = keras.layers.Dense(finaldense, activation=final_activation)(inputm.output)
+
+    if dlmodelname == "conv3d_conc":
+
+        depth, width, height, channels = inputsshape[0]
+        modelimg = set_Conv3dmodel(width=width, height=height, depth=depth, 
+                                        channels = channels,initfilters = initialfilters)
+
+        depth, width, height, channels = inputsshape[1]
+        modelzp = set_Conv3dmodel(width=width, height=height, depth=depth, 
+                                        channels = channels,initfilters = initialfilters)
+        
+        inputm = keras.layers.concatenate([modelimg.output, modelzp.output])
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm)
+        inputsmodel = [modelimg.input,
+                           modelzp.input]
+    
+    if dlmodelname == "conv3dlstm_conc":
+
+        depth, width, height, channels = inputsshape[0]
+        modelimg = ConvLSTM_Model_zprof(frames=depth, channels=channels, 
+                                width=width, height=height,initfilters = initialfilters)
+
+        depth, width, height, channels = inputsshape[1]
+        modelzp = ConvLSTM_Model_zprof(frames=depth, channels=channels, 
+                                width=width, height=height,initfilters = initialfilters)
+        
+        inputm = keras.layers.concatenate([modelimg.output, modelzp.output])
+        x = keras.layers.Dense(finaldense, activation=final_activation)(inputm)
+        inputsmodel = [modelimg.input,
+                           modelzp.input]
+    
     x = keras.layers.Dropout(finaldrop)(x)
     mlastlayer = layers.Dense(noutputs)(x)
-    model= keras.Model(inputs=inputm.input, outputs=mlastlayer, name = dlmodelname)
+    model= keras.Model(inputs=inputsmodel, outputs=mlastlayer, name = dlmodelname)
+
     print(final_activation,finaldrop,noutputs)
     if model is None:
         raise ValueError("please chen the available model's configuration {}".format(["conv3d","alexnet3d","conv3dlstm"]))
@@ -523,20 +567,34 @@ class dlModel:
     
     def restore_weights(self):
 
-        tfiles = os.listdir(self.checkpoint_path)
+      tfiles = os.listdir(self.checkpoint_path)
+      if self._load_last:
+        flindex = [i[:-6] for i in tfiles if i.startswith("testfinal") and i.endswith("index")]
+        print(flindex)
+        #print(flindex[0][:flindex[0].index('.index')])
+        print(flindex[0][10:])
 
-        flindex = [i[:-6] for i in tfiles if i.endswith("index")]
+        epochnumber = np.array([int(i[10:]) for i in flindex])
+        print(epochnumber)
+        if len(epochnumber)==0:
+          self._load_last = False
+          self.restore_weights()
+
+      else:
+        flindex = [i[:-6] for i in tfiles if i.endswith("_run.index")]  
         ## load last weights saved
         epochnumber = np.array([int(i[(i.index('epoch')+5):(i.index('-loss'))]) for i in flindex])
-        
-        if len(epochnumber)>0:
-            bestmodel = flindex[np.where(epochnumber == max(epochnumber))[0][0]]
-            self.model.load_weights(os.path.join(self.checkpoint_path, bestmodel))
-            self.bestmodel = bestmodel
-            self._last_epoch = bestmodel[(bestmodel.index('epoch')+5):(bestmodel.index('-loss'))]
-            print("checkpoint load {}".format(os.path.join(self.checkpoint_path, bestmodel)))
-        else:
-            print("it was not possible to load weights **********")
+      
+      if len(epochnumber)>0:
+          bestmodel = flindex[np.where(epochnumber == max(epochnumber))[0][0]]
+          print(bestmodel)
+          self.model.load_weights(os.path.join(self.checkpoint_path, bestmodel))
+          self.bestmodel = bestmodel
+          self._last_epoch = np.sort(epochnumber)[0]
+          print(np.sort(epochnumber)[0])
+          print("checkpoint load {}".format(os.path.join(self.checkpoint_path, bestmodel)))
+      else:
+          print("it was not possible to load weights **********")
         
 
 
@@ -633,12 +691,13 @@ class dlModel:
                  architecture = None,
                  checkpoint_path = None,
                  parameters = None,
-
+                 load_lastweigths = False
                  ):
         self.bestmodel = None
         #self.targetscale = targetvariable["scaler"] if "scaler" in targetvariable else None
         self.architecture = architecture
         self.checkpoint_path = checkpoint_path
+        self._load_last = load_lastweigths
         self._last_epoch = None
         if parameters is not None:
             self.parameters = parameters
