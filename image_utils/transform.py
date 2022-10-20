@@ -5,11 +5,88 @@ from image_utils.general_functions import image_rotation,image_zoom,randomly_dis
 import cv2
 import os
 import numpy as np
-import matplotlib.pyplot as plt
+
+import pickle
 import copy
 
-from functools import wraps
+def minmax_scale(data, minval = None, maxval = None):
+    
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
 
+def standard_scale(data, meanval = None, stdval = None):
+    if meanval is None:
+        meanval = np.nanmean(data)
+    if stdval is None:
+        stdval = np.nanstd(data)
+    
+    return (data-meanval)/stdval 
+
+class MT_Imagery(object):
+
+    @property
+    def shape(self):
+        dimsnames = self.dictdata['dims'].keys()
+        dimsshape = [len(self.features)]
+        for i in dimsnames:
+            dimsshape.append(len(self.dictdata['dims'][i]))
+
+        return tuple(dimsshape)
+
+    def _checkfeaturesfilter(self,onlythesefeatures):
+
+        if onlythesefeatures is not None:
+            truefeat = []
+            notfeat = []
+            for featname in onlythesefeatures:
+                if featname in self.features:
+                    truefeat.append(featname)
+                else:
+                    notfeat.append(featname)
+            if len(notfeat) > 0:
+                print(f"there is not a feature with names {notfeat}")
+            if len(truefeat) >0:
+                self.features = truefeat
+
+
+    def to_npvalues(self, dataformat = 'DCHW',chanelslast = False):
+
+        matrix = np.empty(shape=self.shape, dtype=float)
+
+        for i,featname in enumerate(self.features):
+            matrix[i] = copy.deepcopy(self.dictdata['variables'][featname])
+        
+        if dataformat == 'DCHW':
+            matrix = matrix.swapaxes(0,1)
+        if chanelslast:
+            for i in range(len(matrix.shape)-1):
+                matrix = matrix.swapaxes(i,i+1)
+
+        return matrix
+
+    def __init__(self, data = None, fromfile = None, onlythesefeatures = None) -> None:
+        
+        
+        if fromfile is not None:
+            if os.path.exists(fromfile):
+
+                with open(fromfile,"rb") as f:
+                    self.dictdata = pickle.load(f)
+
+            else:
+                raise ValueError(f"{fromfile} doesn't exist")
+
+        else:
+            self.dictdata = data
+
+        self.mainkeys = list(self.dictdata.keys())
+        self.features = list(self.dictdata['variables'].keys())
+        self._checkfeaturesfilter(onlythesefeatures)
+        
 
 def perform(fun, *args):
     return fun(*args)
@@ -390,14 +467,14 @@ class MultiChannelImage(ImageAugmentation):
         return self._new_images['multitr']
 
 
-    def __init__(self, img, img_id = None, formatorder = 'channels_first', **kwargs) -> None:
+    def __init__(self, img, img_id = None, channels_order = 'first', **kwargs) -> None:
 
         if img_id is not None:
             self.orig_imgname = img_id
         else:
             self.orig_imgname = "image"
 
-        if formatorder == 'channels_first':
+        if channels_order == 'first':
             self._initimg = img[0]
         else:
             self._initimg = img[:,:,0]
@@ -407,8 +484,38 @@ class MultiChannelImage(ImageAugmentation):
         super().__init__(self._initimg, **kwargs)
     
 
+def scale_mtdata(data, 
+                       scaler=None, 
+                       scale_z = True,
+                       name_3dfeature = 'z'):
 
-class Augmentation_Xrdata(MultiChannelImage):
+    datamod = data.npdata.copy()
+    
+    if scaler is not None:
+        scale1, scale2,method = scaler
+        datascaled = []
+        for i, varname in enumerate(data.features):
+            if method == 'minmax':
+                if scale_z and varname == name_3dfeature:
+                        datascaled.append(minmax_scale(
+                            datamod[i],
+                            minval = scale1[varname], 
+                            maxval = scale2[varname]))
+
+                elif varname != name_3dfeature:
+                    scale1[varname]
+                    datascaled.append(minmax_scale(
+                            datamod[i],
+                            minval = scale1[varname], 
+                            maxval = scale2[varname]))
+                else:
+                    datascaled.append(datamod[i])
+
+
+    return np.array(datascaled)
+
+
+class AugmentMTdata(MT_Imagery,MultiChannelImage):
 
     @property
     def _run_multichannel_transforms(self):
@@ -461,9 +568,6 @@ class Augmentation_Xrdata(MultiChannelImage):
                                         shift= shift, 
                                         max_displacement= max_displacement)
 
-    def rotate_tempimages(self, angle=None):
-        return self._multi_timetransform(tranformn = 'rotation', angle = angle)
-
     def expand_tempimages(self, ratio=None):
         return self._multi_timetransform(tranformn = 'zoom', ratio = ratio)
 
@@ -478,6 +582,7 @@ class Augmentation_Xrdata(MultiChannelImage):
     
     def random_multime_transform(self, augfun = None):
         availableoptions = list(self._run_multichannel_transforms.keys())+['raw']
+        
         if augfun is None:
             augfun = random.choice(availableoptions)
         elif type(augfun) is list:
@@ -496,24 +601,42 @@ class Augmentation_Xrdata(MultiChannelImage):
         return imgtr
 
     def __init__(self, 
-                 xrdata, 
+                 data=None, 
+                 fromfile=None, 
+                 onlythesefeatures=None,
+                 onlythesedates = None,
                  img_id=None, 
-                 formatorder='CDHW', 
-                 variables = None, 
-                 times = None, 
+                 formatorder = 'DCHW',
+                 channelslast = False,
+                 removenan = True,
+                 image_scaler = None,
+                 scale_3dimage = False,
+                 name_3dfeature = 'z',
                  **kwargs) -> None:
 
 
-        if variables is not None:
-            self.npdata = copy.deepcopy(xrdata[variables].to_array().values)
-            self.variables = variables
-        else:
-            self.npdata = copy.deepcopy(xrdata.to_array().values)
-            self.variables = list(xrdata.keys())
+        MT_Imagery.__init__(self,data, fromfile, onlythesefeatures = onlythesefeatures)
 
-        if formatorder == 'CDHW':
-            channels_position = 'channels_first'
-            self._initdate = copy.deepcopy(self.npdata[:,0,:,:])
-        
+        self.npdata = copy.deepcopy(self.to_npvalues(dataformat = formatorder, chanelslast = channelslast))
 
-        super().__init__(self._initdate, img_id, formatorder = channels_position, **kwargs)
+        if removenan:
+            self.npdata[np.isnan(self.npdata)] = 0
+
+        if formatorder == "DCHW":
+            self.npdata = self.npdata.swapaxes(1,0)
+            channelsorder = 'first'
+        elif formatorder == "CDHW":
+            channelsorder = 'first'
+        elif channelslast:
+            channelsorder = 'last'
+
+        if onlythesedates is not None:
+            self.npdata = self.npdata[:,onlythesedates,:,:]
+
+        if image_scaler is not None:
+            self.npdata = scale_mtdata(self,[image_scaler[0],image_scaler[1],'minmax'],
+                                    scale_z = scale_3dimage, name_3dfeature = name_3dfeature)
+
+        self._initdate = copy.deepcopy(self.npdata[:,0,:,:])
+
+        MultiChannelImage.__init__(self,img = self._initdate, img_id= img_id, channels_order = channelsorder, **kwargs)
