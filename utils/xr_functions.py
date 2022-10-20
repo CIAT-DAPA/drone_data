@@ -7,6 +7,7 @@ import xarray
 from utils.gis_functions import get_tiles
 from shapely.geometry import Polygon
 import richdem as rd
+import os
 
 def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees', name4d = 'date'):
     """
@@ -242,3 +243,6 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
                         maxval = np.nanmax(refvalue)
 
     return min_dict, max_dict
+
+
+

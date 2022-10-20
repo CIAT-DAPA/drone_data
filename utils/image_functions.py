@@ -11,7 +11,7 @@ from skimage.draw import line_aa
 from scipy.spatial import ConvexHull
 import warnings
 import cv2 as cv
-
+import ray
 
 # https://en.wikipedia.org/wiki/Histogram_equalization
 def hist_equalization(np2dimg):
@@ -410,9 +410,39 @@ class DataAugmentation:
         self.image = nd_image
 
 
+def tranform_z2dinto_profiles(z2dimage, axis = 'x',
+                              zmin = 0, zmax = 60,cms = 1, 
+                              scalez = 10, slices_step = 1, initval = 1, **kwargs
+                             ):
+    
+    """
+    a functions to reshape the [x y z] data to a [x z chanel] image
 
-def from_to2d_zarray(data, zvalues, axis = 'x', 
-                     zmin = 0, zmax = 60,cms = 1, scalez = 10, stepslices = 1, initval = 1, **kwargs):
+    ----------
+    Parameters
+    data : numpy 2d array
+        an array that contains the chanel data to be transformed as x z axis
+    zvalues: numpy 2d array
+        an array that contains the z values
+    axis :int, optional
+        which axis will be transformed along with z [ 'x' , 'y' ]
+    
+    zmin : int, optional
+        a value that will be taken as minimun for z axis
+    zmax : int, optional
+        a value that will be taken as maximun for z axis
+
+    slices_step: int, optional
+        a integer value to set
+    ----------
+    Returns
+    numpy 3d array [chanel, x, z]
+    """
+
+def from_to2d_zarray(zvalues, 
+                     fill_values = None,
+                     axis = 'x', 
+                     zmin = 0, zmax = 60,cms = 1, scalez = 10, slices_step = 1, initval = 1, **kwargs):
 
     """
     a functions to reshape the [x y z chanel] data to a [x z chanel] image
@@ -424,39 +454,50 @@ def from_to2d_zarray(data, zvalues, axis = 'x',
     zvalues: numpy 2d array
         an array that contains the z values
     axis :int, optional
-        which axis will transformed along with z [ 'x' , 'y' ]
+        which axis will be transformed along with z [ 'x' , 'y' ]
     
     zmin : int, optional
         a value that will be taken as minimun for z axis
     zmax : int, optional
         a value that will be taken as maximun for z axis
 
+    slices_step: int, optional
+        a integer value to set
     ----------
     Returns
     numpy 3d array [chanel, x, z]
     """
 
     if axis=='x':
-        lenaxis = data.shape[0]
+        lenaxis = zvalues.shape[0]
         slicedstr = 'zvalues[j]'
-        sentvalues = 'data[j]'
+        if fill_values is not None:
+            sentvalues = '[data[j]]'
+        else:
+            sentvalues = 'fill_values'
     else:
-        lenaxis = data.shape[1]
+        lenaxis = zvalues.shape[1]
         slicedstr = 'zvalues[:,j]'
-        sentvalues = 'data[:,j]'
+        if fill_values is not None:
+            sentvalues = '[data[:,j]]'
+        else:
+            sentvalues = 'fill_values'
+
 
     zimg = np.array([i for i in range(zmin*scalez, zmax*scalez, int(float(cms) * float(scalez)))])
     
 
     slicelist = []
-    for j in range(initval*stepslices,(lenaxis-(stepslices)),stepslices):
+    for j in range(initval*slices_step,(lenaxis-(slices_step)),slices_step):
         slicedataz = eval(slicedstr)
         if np.sum(np.logical_not(np.isnan(slicedataz))) > 0:
             slicedata = eval(sentvalues)
             z2dimg = singlexy_to2d_zarray(
-                                          [slicedata], 
+                                           
                                           slicedataz, 
-                                          scalez = scalez, referencearray = zimg,**kwargs)[0]
+                                          fill_Values = slicedata,
+                                          scalez = scalez, 
+                                          referencearray = zimg,**kwargs)[0]
         else:
             z2dimg = np.zeros((len(zimg),len(slicedataz)))
         slicelist.append(z2dimg)
@@ -464,56 +505,119 @@ def from_to2d_zarray(data, zvalues, axis = 'x',
     return np.array(slicelist)    
 
 
-def singlexy_to2d_zarray(data, zvalues, scalez = 10, referencearray = None, 
-                         barstyle = True, flip =False, fliplefttoright = False):
+#@ray.remote
+def transform_to_heightprofile(
+                     z2img, 
+                     fill_values = None,
+                     slices_step = 6,
+                     axis = 0, 
+                     zmax_cm = 60,
+                     scalez = 1, 
+                     
+                     nslices = None,
+                     initial_slice = 1, **kwargs):
 
     """
     a functions to reshape the [x y z chanel] data to a [x z chanel] image
 
     ----------
     Parameters
-    data : numpy 2d array
+    zvalues: numpy 2d array
+        an array that contains the z values
+    fill_values : numpy 2d array, optional
+        an array that contains the chanel data to be transformed as x z axis1
+    axis :int, optional
+        which axis will be transformed along with z [ 0 , 1 ]
+    
+    scalez : int, optional
+        a value that will be taken as minimun for scaling z
+    zmax_cm : int, optional
+        a value that will be taken as maximun for z axis in cm
+
+    slices_step: int, optional
+        a integer value to set
+    ----------
+    Returns
+    numpy 3d array [chanel, x, z]
+    """
+
+    if axis == 0:
+        datatotransform = z2img
+    else:
+        datatotransform = z2img.swapaxes(1,0)
+        if fill_values is not None:
+            fill_values = fill_values.swapaxes(1,0)
+
+    lenaxis = datatotransform.shape[0]
+    newheight = int(zmax_cm*scalez)
+    if nslices is not None:
+        slices_step = int(lenaxis/nslices)
+        print(slices_step)
+        
+    slicelist = []
+    for j in range(initial_slice*slices_step,
+                    (lenaxis-(slices_step)),slices_step):
+        slicedataz = datatotransform[j]
+        if np.sum(np.logical_not(np.isnan(slicedataz))) > 0:
+            z2dimg = singleline_to2d_slice(datatotransform[j], 
+                                            fill_Values = datatotransform[j],
+                                            scalez = scalez, 
+                                            referenheight= newheight,
+                                            **kwargs
+                                            )
+
+        else:
+            z2dimg = np.zeros((newheight,len(slicedataz)))
+        slicelist.append(z2dimg)
+
+    return np.array(slicelist) 
+
+
+
+def singleline_to2d_slice(zvalues, fill_Values = None, scalez = 1, 
+                         referenheight = None, 
+                         barstyle = True, flip =True, fliplefttoright = False):
+
+    """
+    a functions to reshape the [x y z chanel] data to a [x z chanel] image
+
+    ----------
+    Parameters
+    fill_Values : numpy 2d array, optional
         an array that contains the chanel data to be transformed as x z axis
     zvalues: numpy 2d array
         an array that contains the z values
 
+    scalez: floar, optional
+        a numerical value that will be used to scale height images
     
     ----------
     Returns
     numpy 3d array [chanel, x, z]
     """
 
-
-    coordspos = []
+    if fill_Values is None:
+        barstyle = False
+    else:
+        barstyle = True
+        
+    npzeros = np.zeros((len(zvalues),referenheight))
     for xi in range(len(zvalues)):
         xivals = zvalues[xi]
         if not np.isnan(zvalues[xi]):
+            zpos = (np.round(xivals,1)*scalez).astype(int)
+            zpos = zpos - zpos%scalez
             
-            zpos = np.round(xivals,1)*scalez
-
-            zpos = [i for i in range(len(referencearray)-1) 
-                        if np.logical_and(zpos>=referencearray[i],zpos<referencearray[i+1])][0]
-            
-            coordspos.append([xi, zpos])
-    #assign data
-    listnewdata = []
-    for i in range(len(data)):
-        npzeros = np.zeros((len(zvalues), len(referencearray)))
-
-        for xx,yy in coordspos:
-            if barstyle == True:
-                npzeros[xx,:yy] = data[i][xx]
+            if barstyle:
+                npzeros[xi,:int((zpos))] = fill_Values[xi]
             else:
-                #npzeros[xx,yy] = data[i][xx]
-                npzeros[xx,:yy] = 1
+                npzeros[xi,:int((zpos))] = 1
 
-        if flip:
-            npzeros = npzeros.swapaxes(0,1)
-            npzeros = Image.fromarray(npzeros)
-            npzeros = np.array(ImageOps.flip(npzeros))
-        if fliplefttoright:
-            npzeros = np.array(Image.fromarray(npzeros).transpose(Image.FLIP_LEFT_RIGHT))
-
-        listnewdata.append(npzeros)
+    if flip:
+        npzeros = npzeros.swapaxes(0,1)
+        npzeros = Image.fromarray(npzeros)
+        npzeros = np.array(ImageOps.flip(npzeros))
+    if fliplefttoright:
+        npzeros = np.array(Image.fromarray(npzeros).transpose(Image.FLIP_LEFT_RIGHT))
     
-    return np.array(listnewdata)
+    return npzeros

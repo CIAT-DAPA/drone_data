@@ -1,5 +1,5 @@
 from numpy.lib.polynomial import poly
-import rasterstats as rs
+
 import pandas as pd
 import xarray
 import numpy as np
@@ -385,6 +385,7 @@ def crop_using_windowslice(xr_data, window, transform):
     return xrwindowsel
 
 def get_data_perpoints(xrdata, gpdpoints, var_names=None, long=True):
+    import rasterstats as rs
     """
 
     :param xrdata:
