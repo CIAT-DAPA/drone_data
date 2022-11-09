@@ -7,8 +7,10 @@ import copy
 from utils.image_functions import transform_to_heightprofile
 import keras
 import concurrent.futures as cf
-import ray
+
 from itertools import product
+
+
 
 
 def minmax_scale(data, minval = None, maxval = None):
@@ -220,7 +222,7 @@ def get_heighttsdata(image, heightvarname, features, scaler_image_values):
     return trimage,heightdata
 
 
-@ray.remote
+#@ray.remote
 def randomtransformfromaug(fn,path, scalerimage, features,dates,heightvarname,heightprofile, transforms):
         #imgpath = imgpath[:imgpath.index('_time')]
         fn = os.path.join(path,fn)
@@ -266,17 +268,6 @@ def randomtransformfromaugnotray(fn,path, scalerimage, features,dates,heightvarn
             img_transformed = [img_transformed]
 
         return img_transformed
-
-def run_complex_operations(operation, path, fn_list, listidx,scalerimage, 
-                           features,dates,heightvarname,heightprofile, transforms):
-    
-	#print(inputargs[0][1])
-    return ray.get([operation.remote(fn_list[i],path, 
-                                scalerimage, 
-                                features,
-                                dates,
-                                heightvarname,
-                                heightprofile, transforms) for i in listidx])
 
 
 def one_run_wrapper(*args):
@@ -342,10 +333,12 @@ class GettingDLDatafromMTdata(keras.utils.Sequence):
                  features = None,
                  times = None,
                  get_zprofiles = False,
+                 zprofilesonly = False,
                  batch_size=1,
                  heightvariable = 'z',
                  workers = 6,
                  parrallel = 'pool',
+                 
                  augmentation_options = None):
 
         #super().__init__()
@@ -358,6 +351,7 @@ class GettingDLDatafromMTdata(keras.utils.Sequence):
         self._scaler_image_values = scaler_image_values
         self._scaler_target = scaler_target_values
         self._heightprofile = get_zprofiles
+        self._zprofilesonly = zprofilesonly
         self._aug_transforms = augmentation_options
         self._heightvarname = heightvariable
         self.heightdata = None
@@ -412,68 +406,6 @@ class GettingDLDatafromMTdata(keras.utils.Sequence):
                 pool.close()
                 pool.join()
 
-            if self.parallel=='ray':
-                ray.init()
-                listdata =run_complex_operations(randomtransformfromaug,
-                                                self.path, 
-                                                self.fn_list, 
-                                                list_ids,
-                                                self._scaler_image_values, 
-                                                self._features,
-                                                self._dates,
-                                                self._heightvarname,
-                                                self._heightprofile, self._aug_transforms)
-                ray.shutdown()
-
-            if self.parallel=='pool':
-
-                with Pool(processes=self._workers) as pool:
-                    pool.map(one_run_wrapper, [(self.fn_list[i],
-                                self.path, 
-                                self._scaler_image_values, 
-                                self._features,
-                                self._dates,
-                                self._heightvarname,
-                                self._heightprofile, self._aug_transforms) for i in list_ids])
-
-            #product(list(range(allpolygons.shape[0])),
-            #        [[kmeanmodel_soil,5]])
-
-            #with multiprocessing.Pool(processes=self._workers) as pool:
-            #    listdata = pool.map(randomtransformfromaug(self.path, 
-            #                        self.fn_list, 
-            #                        idx,
-            #                        self._scaler_image_values, 
-            #                        self._features,
-            #                        self._dates,
-            #                        self._heightvarname,
-            #                        self._heightprofile, self._aug_transforms), list_ids)
-            # p = Process(target=self.initrun, args=(list_ids))
-            #p.start()
-            #p.join()    
-            #pool = multiprocessing.Pool()
-            #pool = multiprocessing.Pool(processes=self._workers)
-            #inputs = [0,1,2,3,4]
-            #listdata = pool.map(self.initrun, list_ids)
-            #pool.close()
-            #pool.join()
-            #listdata= []
-            #cloud_thread= []
-            #with cf.ProcessPoolExecutor(max_workers=self._workers) as executor:
-            #    for idx in list_ids:
-            #        cloud_thread.append({executor.submit(randomtransformfromaug,
-            #                                             self.path, 
-            #                                                self.fn_list, 
-            #                                                idx,
-            #                                                self._scaler_image_values, 
-            #                                                self._features,
-            #                                                self._dates,
-            #                                                self._heightvarname,
-            #                                                self._heightprofile, self._aug_transforms): idx})
-
-            #    for future in cloud_thread:
-            #        for i in cf.as_completed(future):
-            #            listdata.append(i.result())
         else:
             listdata = [randomtransformfromaugnotray(self.fn_list[idx],
                                                             self.path, 
@@ -496,7 +428,12 @@ class GettingDLDatafromMTdata(keras.utils.Sequence):
         if self._heightprofile:
             ximages = np.array([values[0] for values in xlist])
             xprofiles = np.array([values[1] for values in xlist])
-            xlist = [ximages,xprofiles]
+            
+            if self._zprofilesonly:
+                xlist = np.array(xprofiles)
+            else:
+    
+                xlist = [ximages,xprofiles]
         else:
             xlist = np.array(xlist)
         
@@ -704,3 +641,78 @@ class GettingDLDatafromXRdata(object):
         
         if self.shuffle == True:
             np.random.shuffle(self._list_ids)"""
+
+"""           
+            def run_complex_operations(operation, path, fn_list, listidx,scalerimage, 
+                                    features,dates,heightvarname,heightprofile, transforms):
+                
+                #print(inputargs[0][1])
+                return ray.get([operation.remote(fn_list[i],path, 
+                                            scalerimage, 
+                                            features,
+                                            dates,
+                                            heightvarname,
+                                            heightprofile, transforms) for i in listidx])
+
+            if self.parallel=='ray':
+                ray.init()
+                listdata =run_complex_operations(randomtransformfromaug,
+                                                self.path, 
+                                                self.fn_list, 
+                                                list_ids,
+                                                self._scaler_image_values, 
+                                                self._features,
+                                                self._dates,
+                                                self._heightvarname,
+                                                self._heightprofile, self._aug_transforms)
+                ray.shutdown()
+
+            if self.parallel=='pool':
+
+                with Pool(processes=self._workers) as pool:
+                    pool.map(one_run_wrapper, [(self.fn_list[i],
+                                self.path, 
+                                self._scaler_image_values, 
+                                self._features,
+                                self._dates,
+                                self._heightvarname,
+                                self._heightprofile, self._aug_transforms) for i in list_ids])
+            """
+            #product(list(range(allpolygons.shape[0])),
+            #        [[kmeanmodel_soil,5]])
+
+            #with multiprocessing.Pool(processes=self._workers) as pool:
+            #    listdata = pool.map(randomtransformfromaug(self.path, 
+            #                        self.fn_list, 
+            #                        idx,
+            #                        self._scaler_image_values, 
+            #                        self._features,
+            #                        self._dates,
+            #                        self._heightvarname,
+            #                        self._heightprofile, self._aug_transforms), list_ids)
+            # p = Process(target=self.initrun, args=(list_ids))
+            #p.start()
+            #p.join()    
+            #pool = multiprocessing.Pool()
+            #pool = multiprocessing.Pool(processes=self._workers)
+            #inputs = [0,1,2,3,4]
+            #listdata = pool.map(self.initrun, list_ids)
+            #pool.close()
+            #pool.join()
+            #listdata= []
+            #cloud_thread= []
+            #with cf.ProcessPoolExecutor(max_workers=self._workers) as executor:
+            #    for idx in list_ids:
+            #        cloud_thread.append({executor.submit(randomtransformfromaug,
+            #                                             self.path, 
+            #                                                self.fn_list, 
+            #                                                idx,
+            #                                                self._scaler_image_values, 
+            #                                                self._features,
+            #                                                self._dates,
+            #                                                self._heightvarname,
+            #                                                self._heightprofile, self._aug_transforms): idx})
+
+            #    for future in cloud_thread:
+            #        for i in cf.as_completed(future):
+            #            listdata.append(i.result())

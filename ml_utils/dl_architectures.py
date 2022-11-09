@@ -5,6 +5,115 @@ from tensorflow import keras
 from tensorflow.keras import layers
 
 
+def ConvLSTM_Model_block(frames, channels, width, height, initfilters = 128):
+  
+    inputs  = keras.Input(shape=(frames, width, height,channels))
+    
+    first_ConvLSTM = layers.ConvLSTM2D(filters=initfilters, kernel_size=(2, 2)
+                       , data_format='channels_last'
+                       , activation='relu'
+                       #, recurrent_activation='hard_sigmoid'
+                       , padding='same', return_sequences=True)(inputs)
+
+    first_batchnorm = layers.BatchNormalization()(first_ConvLSTM)
+    x = tf.keras.layers.MaxPool3D(pool_size=(1,2,2), strides=2, padding='same')(first_batchnorm)
+    x = layers.Dropout(0.5)(x)
+    second_ConvLSTM = layers.ConvLSTM2D(filters=initfilters*2, kernel_size=(3, 3)
+                        , data_format='channels_last'
+                        , activation='relu'
+                        , padding='same', return_sequences=True)(x)
+    second_batchnorm = layers.BatchNormalization()(second_ConvLSTM)
+    x = tf.keras.layers.MaxPool3D(pool_size=(3,3,3), strides=2, padding='same')(second_batchnorm)
+    x = layers.Dropout(0.5)(x)
+    out_shape = x.shape
+    print('====Model shape: ', out_shape)
+    #third_ConvLSTM = layers.ConvLSTM2D(filters=16, kernel_size=(5, 5)
+    #                    , data_format='channels_last'
+    #                    , activation='relu'
+    #                    , padding='same', return_sequences=True)(x)
+    out_shape = x.shape
+    x = layers.GlobalAveragePooling3D()(x)
+    x = layers.Dropout(0.5)(x)
+    out_shape = x.shape
+    print('====Model shape: ', out_shape)
+
+    x = layers.Dense(units=1024, activation="relu")(x)
+    x = layers.Dropout(0.5)(x)
+    x = layers.Dense(units=3072, activation="relu")(x)
+
+    x =  layers.Reshape((32,32,3))(x)
+
+    x  = layers.Conv2DTranspose(128, (5, 5), strides=2, activation="relu", padding="same")(x)
+    out_shape = x.shape
+    print('====Model shape d1: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    x  = layers.Conv2DTranspose(64, (3, 3), strides=2, activation="relu", padding="same")(x )
+    out_shape = x.shape
+    print('====Model shape d2: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    x  = layers.Conv2DTranspose(32, (3, 3), strides=2, activation="relu", padding="same")(x )
+    out_shape = x.shape
+    print('====Model shape d2: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    return keras.Model(inputs, x, name="convLSTMblock")
+
+
+def set_Conv3dmodel_block(width=150, height=150, depth = 5, channels = 8, initfilters = 32):
+    """Build a 3D convolutional neural network model."""
+    #data_format="NDHWC"
+    #inputs = keras.Input((width, height, depth, 3))
+    inputs3d = keras.Input((depth,  width, height, channels))
+
+    x = layers.Conv3D(filters=initfilters, kernel_size=2, strides=2, padding='same', activation="relu")(inputs3d)
+    x = layers.MaxPool3D(pool_size=2, strides=2, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.3)(x)
+
+    x = layers.Conv3D(filters=64, kernel_size=3, strides=1, padding='same',  activation="relu")(x)
+    x = layers.MaxPool3D(pool_size=3, strides=1, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.3)(x)
+
+    x = layers.Conv3D(filters=64, kernel_size=3, strides=1, padding='same',  activation="relu")(x)
+    x = layers.MaxPool3D(pool_size=3, strides=1, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.3)(x)
+
+    x = layers.Conv3D(filters=32, kernel_size=2, strides=2, padding='same',  activation="relu")(x)
+    x = layers.MaxPool3D(pool_size=2, strides=2, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.3)(x)
+    
+    x = layers.GlobalAveragePooling3D()(x)
+    x = layers.Flatten()(x)
+    x = layers.Dropout(0.3)(x)
+    
+    x = layers.Dense(units=1024, activation="relu")(x)
+    x = layers.Dropout(0.5)(x)
+    x = layers.Dense(units=3072, activation="relu")(x)
+
+    x =  layers.Reshape((32,32,3))(x)
+
+    x  = layers.Conv2DTranspose(128, (5, 5), strides=2, activation="relu", padding="same")(x)
+    out_shape = x.shape
+    print('====Model shape d1: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    x  = layers.Conv2DTranspose(64, (3, 3), strides=2, activation="relu", padding="same")(x )
+    out_shape = x.shape
+    print('====Model shape d2: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    x  = layers.Conv2DTranspose(32, (3, 3), strides=2, activation="relu", padding="same")(x )
+    out_shape = x.shape
+    print('====Model shape d2: ', out_shape)
+    x  = keras.layers.BatchNormalization()(x)
+
+    return keras.Model(inputs3d, x, name="conv3d")
+
 
 def ConvLSTM_Model_zprof(frames, channels, width, height, initfilters = 128):
   

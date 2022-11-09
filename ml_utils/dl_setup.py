@@ -544,6 +544,61 @@ def built_dlmodel(inputsshape,dlmodelname, noutputs = 1,
         inputsmodel = [modelimg.input,
                            modelzp.input]
     
+    if dlmodelname == "conv3d_concdeco":
+      
+      depth, width, height, channels = inputsshape[0]
+      modelimg = set_Conv3dmodel_block(width=width, height=height, depth=depth, 
+                                      channels = channels)
+
+      depth, width, height, channels = inputsshape[1]
+      modelzp = set_Conv3dmodel_block(width=width, height=height, depth=depth, 
+                                      channels = channels)
+      
+      inputm = layers.concatenate([modelimg.output, modelzp.output])
+
+      x  = keras.layers.BatchNormalization()(inputm)
+
+      x  = layers.Conv2D(64, (5, 5), strides=2, activation="relu", padding="same")(x)
+      x  = keras.layers.BatchNormalization()(x)
+
+      x  = layers.Conv2D(32, (5, 5), strides=2, activation="relu", padding="same")(x)
+      x  = keras.layers.BatchNormalization()(x)
+      x = layers.GlobalAveragePooling2D()(x)
+      x = layers.Flatten()(x)
+      x = layers.Dropout(0.3)(x)
+      x = keras.layers.Dense(finaldense, activation=final_activation)(x)
+      inputsmodel = [modelimg.input,
+                           modelzp.input]
+
+        
+    if dlmodelname == "conv3dlstm_concdeco":
+
+      depth, width, height, channels = inputsshape[0]
+      modelimg = ConvLSTM_Model_block(frames=depth, channels=channels, 
+                              width=width, height=height,initfilters = initialfilters)
+
+      depth, width, height, channels = inputsshape[1]
+      modelzp = ConvLSTM_Model_block(frames=depth, channels=channels, 
+                              width=width, height=height,initfilters = initialfilters)
+
+      inputm = layers.concatenate([modelimg.output, modelzp.output])
+
+      x  = keras.layers.BatchNormalization()(inputm)
+
+      x  = layers.Conv2D(64, (5, 5), strides=2, activation="relu", padding="same")(x)
+      x  = keras.layers.BatchNormalization()(x)
+
+      x  = layers.Conv2D(32, (5, 5), strides=2, activation="relu", padding="same")(x)
+      x  = keras.layers.BatchNormalization()(x)
+      x = layers.GlobalAveragePooling2D()(x)
+      x = layers.Flatten()(x)
+      x = layers.Dropout(0.3)(x)              
+      x = keras.layers.Dense(finaldense, activation=final_activation, 
+                             kernel_regularizer=tf.keras.regularizers.L1(0.01))(x)
+      inputsmodel = [modelimg.input,
+                           modelzp.input]
+
+
     x = keras.layers.Dropout(finaldrop)(x)
     mlastlayer = layers.Dense(noutputs)(x)
     model= keras.Model(inputs=inputsmodel, outputs=mlastlayer, name = dlmodelname)
@@ -553,6 +608,12 @@ def built_dlmodel(inputsshape,dlmodelname, noutputs = 1,
         raise ValueError("please chen the available model's configuration {}".format(["conv3d","alexnet3d","conv3dlstm"]))
     print("{} model configurated".format(dlmodelname))
     return model
+
+def findepochnumber(weigthfiles, index, strepochref = 'epoch', stopepochstr ='-loss' ):
+  flindex = [i[:-6] for i in weigthfiles if i.endswith(index)]  
+  
+  return np.array([int(i[(i.index(strepochref)+5):(i.index(stopepochstr))]) for i in flindex]), flindex
+
 
 
 class dlModel:
@@ -568,30 +629,29 @@ class dlModel:
     def restore_weights(self):
 
       tfiles = os.listdir(self.checkpoint_path)
+      print(self._load_last)
+
       if self._load_last:
         flindex = [i[:-6] for i in tfiles if i.startswith("testfinal") and i.endswith("index")]
         print(flindex)
-        #print(flindex[0][:flindex[0].index('.index')])
-        print(flindex[0][10:])
+        if len(flindex)>0:
+          epochnumber = np.array([int(i[10:]) for i in flindex])
 
-        epochnumber = np.array([int(i[10:]) for i in flindex])
-        print(epochnumber)
-        if len(epochnumber)==0:
-          self._load_last = False
-          self.restore_weights()
+        else:
+          epochnumber, flindex = findepochnumber(tfiles, index="_run.index")
 
       else:
-        flindex = [i[:-6] for i in tfiles if i.endswith("_run.index")]  
-        ## load last weights saved
-        epochnumber = np.array([int(i[(i.index('epoch')+5):(i.index('-loss'))]) for i in flindex])
+        epochnumber, flindex = findepochnumber(tfiles, index="_run.index")
       
       if len(epochnumber)>0:
           bestmodel = flindex[np.where(epochnumber == max(epochnumber))[0][0]]
-          print(bestmodel)
           self.model.load_weights(os.path.join(self.checkpoint_path, bestmodel))
           self.bestmodel = bestmodel
-          self._last_epoch = np.sort(epochnumber)[0]
-          print(np.sort(epochnumber)[0])
+          epochnumber = np.array(epochnumber)
+          epochnumber[::-1].sort()
+          self._last_epoch = epochnumber[0]
+
+          print(self._last_epoch)
           print("checkpoint load {}".format(os.path.join(self.checkpoint_path, bestmodel)))
       else:
           print("it was not possible to load weights **********")
