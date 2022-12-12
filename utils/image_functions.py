@@ -11,7 +11,7 @@ from skimage.draw import line_aa
 from scipy.spatial import ConvexHull
 import warnings
 import cv2 as cv
-import ray
+
 
 # https://en.wikipedia.org/wiki/Histogram_equalization
 def hist_equalization(np2dimg):

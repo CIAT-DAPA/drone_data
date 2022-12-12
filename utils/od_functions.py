@@ -7,9 +7,9 @@ import geopandas as gpd
 import pandas as pd
 import torch
 
-from models.experimental import attempt_load
+from od_data_awaji_2022.yolov5_master.models.experimental import attempt_load
 
-from yolo_utils.torch_utils import select_device
+from od_data_awaji_2022.yolov5_master.utils.torch_utils import select_device
 from yolo_utils.general import non_max_suppression, scale_coords, set_logging, xyxy2xywh
 
 
@@ -21,7 +21,7 @@ def load_weights_model(wpath, device='', half=False):
     half &= device.type != 'cpu'
     w = str(wpath[0] if isinstance(wpath, list) else wpath)
 
-    model = torch.jit.load(w) if 'torchscript' in w else attempt_load(wpath, map_location=device)
+    model = torch.jit.load(w) if 'torchscript' in w else attempt_load(wpath, device=device)
 
     if half:
         model.half()  # to FP16
