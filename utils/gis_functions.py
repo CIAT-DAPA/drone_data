@@ -458,14 +458,22 @@ def from_bbxarray_2polygon(bb, xarrayimg):
 
 
 def AoI_from_polygons(p1, p2):
+    """
+    calculate intersection over minimun area
+    """
     intersecarea = p1.intersection(p2).area
     unionarea = p1.union(p2).area
     minarea = p2.area 
-    if (intersecarea / minarea) > 0.95:
-        aoi = 1
+    if minarea>0:
+
+        if (intersecarea / minarea) > 0.95:
+            aoi = 1
+        else:
+            aoi = intersecarea / unionarea
     else:
-        aoi = intersecarea / unionarea
+        aoi = 0
     return aoi
+
 
 def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
     area_per_iter = []
@@ -476,8 +484,10 @@ def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
             area_per_iter.append(AoI_from_polygons(ref2,
                                                ref))
         else:
-            area_per_iter.append(ref2.intersection(ref).area / ref2.area)
-        ylist.append(y)
+            if ref2.area> 0:
+                area_per_iter.append(ref2.intersection(ref).area / ref2.area)
+            else:
+                area_per_iter.append(0)
 
     return [area_per_iter, ylist]
 
