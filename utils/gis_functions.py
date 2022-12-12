@@ -21,12 +21,13 @@ import cv2
 import affine
 
 from skimage.registration import phase_cross_correlation
-
-from utils.image_functions import phase_convolution,register_image_shift
-from utils.image_functions import radial_filter
-from utils.image_functions import cartimg_topolar_transform,border_distance_fromgrayimg
-
 from sklearn.impute import KNNImputer
+
+from .image_functions import phase_convolution,register_image_shift
+from .image_functions import radial_filter
+from .image_functions import cartimg_topolar_transform,border_distance_fromgrayimg
+from .image_functions import hist_3dimg
+    
 
 # check it
 
@@ -1073,8 +1074,6 @@ def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, c
 
 
 
-from utils.image_functions import hist_3dimg
-    
 def hist_ndxarrayequalization(xrdata, bands = None,
                               keep_original = True,name4d = 'date'):
     """

@@ -6,16 +6,16 @@ import pickle
 import numpy as np
 
 
-from utils import drone_data
-from utils.data_processing import find_date_instring
-from utils.gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray, stack_as4dxarray
-from utils.xyz_functions import CloudPoints
+from . import drone_data
+from .data_processing import find_date_instring
+from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray, stack_as4dxarray
+from .xyz_functions import CloudPoints
 import geopandas as gpd
 
-from utils.xyz_functions import get_baseline_altitude
-from utils.gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
-from utils.xyz_functions import calculate_leaf_angle
-from utils.drone_data import calculate_vi_fromxarray
+from .xyz_functions import get_baseline_altitude
+from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
+from .xyz_functions import calculate_leaf_angle
+from .drone_data import calculate_vi_fromxarray
 
 
 VEGETATION_INDEX = {# rgb bands

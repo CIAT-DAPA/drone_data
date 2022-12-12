@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 
 import xarray
-from utils.data_processing import from_xarray_to_table
-from utils.data_processing import assign_valuestoimg
+from .data_processing import from_xarray_to_table
+from .data_processing import assign_valuestoimg
 
 def pca_transform(data,
                   variancemin=0.5,

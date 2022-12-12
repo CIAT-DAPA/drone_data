@@ -7,9 +7,9 @@ import xarray
 import math
 from skimage.morphology import convex_hull_image
 
-from utils.gis_functions import filter_3Dxarray_usingradial
-from utils.gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
-from utils.image_functions import getcenter_from_hull
+from .gis_functions import filter_3Dxarray_usingradial
+from .gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
+from .image_functions import getcenter_from_hull
 
 
 MORPHOLOGICAL_METRICS = [

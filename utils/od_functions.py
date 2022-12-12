@@ -1,9 +1,5 @@
-from utils import gis_functions as gf
-from utils.data_processing import from_xarray_2array
-from utils.data_processing import find_date_instring
 
-from utils.data_processing import resize_3dnparray
-from utils.gis_functions import merging_overlaped_polygons
+
 from pathlib import Path
 import numpy as np
 import geopandas as gpd
@@ -11,6 +7,295 @@ import pandas as pd
 import torch
 import time
 import torchvision
+import cv2
+
+from . import gis_functions as gf
+from .data_processing import from_xarray_2array
+from .data_processing import find_date_instring
+from .drone_data import DroneData
+from .gis_functions import merging_overlaped_polygons, from_bbxarray_2polygon
+from .data_processing import resize_3dnparray
+
+def from_yolo_toxy(yolo_style, size):
+    dh, dw = size
+    _, x, y, w, h = yolo_style
+
+    l = int((x - w / 2) * dw)
+    r = int((x + w / 2) * dw)
+    t = int((y - h / 2) * dh)
+    b = int((y + h / 2) * dh)
+
+    if l < 0:
+        l = 0
+    if r > dw - 1:
+        r = dw - 1
+    if t < 0:
+        t = 0
+    if b > dh - 1:
+        b = dh - 1
+
+    return (l, r, t, b)
+
+
+def bb_as_dataframe(xarraydata, yolo_model, device, half =False,
+                       conf_thres=0.70, img_size=512, min_size=128,
+                       bands=['red', 'green', 'blue']):
+                       
+    ind_data = xarraydata[bands].copy().to_array().values
+    imgsz = ind_data.shape[1] if ind_data.shape[1] < ind_data.shape[2] else ind_data.shape[2]
+
+    output = None
+
+    if imgsz >= min_size:
+
+        if (img_size - imgsz) > 0:
+            ind_data = resize_3dnparray(ind_data, img_size)
+
+        bb_predictions = xyxy_predicted_box(ind_data, yolo_model, device, half, conf_thres)
+
+        ### save as shapefiles
+        crs_system = xarraydata.attrs['crs']
+        polsshp_list = []
+        if len(bb_predictions):
+            for i in range(len(bb_predictions)):
+                bb_polygon = from_bbxarray_2polygon(bb_predictions[i][0], xarraydata)
+
+                pred_score = np.round(bb_predictions[i][2] * 100, 3)
+
+                gdr = gpd.GeoDataFrame({'pred': [i],
+                                        'score': [pred_score],
+                                        'geometry': bb_polygon},
+                                       crs=crs_system)
+
+                polsshp_list.append(gdr)
+            output = pd.concat(polsshp_list, ignore_index=True)
+
+    return output,bb_predictions
+
+
+def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
+    # Rescale boxes (xyxy) from img1_shape to img0_shape
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+        pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+    else:
+        gain = ratio_pad[0][0]
+        pad = ratio_pad[1]
+
+    boxes[:, [0, 2]] -= pad[0]  # x padding
+    boxes[:, [1, 3]] -= pad[1]  # y padding
+    boxes[:, :4] /= gain
+    clip_boxes(boxes, img0_shape)
+    return boxes
+def clip_boxes(boxes, shape):
+    # Clip boxes (xyxy) to image shape (height, width)
+    if isinstance(boxes, torch.Tensor):  # faster individually
+        boxes[:, 0].clamp_(0, shape[1])  # x1
+        boxes[:, 1].clamp_(0, shape[0])  # y1
+        boxes[:, 2].clamp_(0, shape[1])  # x2
+        boxes[:, 3].clamp_(0, shape[0])  # y2
+    else:  # np.array (faster grouped)
+        boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, shape[1])  # x1, x2
+        boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
+
+
+
+def xyxy_predicted_box(bbpredicted, im0shape, img1shape):
+
+    pred = bbpredicted
+
+    #print(pred)
+    xyxylist = []
+    yolocoords = []
+    
+    for i, det in enumerate(pred):
+        #s, im0 = '', img0
+        gn = torch.tensor(im0shape)[[1, 0, 1, 0]]
+        if len(det):
+            
+            #det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+            det[:, :4] = scale_boxes(img1shape[2:], det[:, :4], im0shape).round()
+            
+            for *xyxy, conf, cls in det:
+                # Rescale boxes from img_size to im0 size
+                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
+                xyxylist.append([torch.tensor(xyxy).tolist(), xywh, conf.tolist()])
+                m = [0]
+                for i in range(len(xywh)):
+                    m.append(xywh[i])
+                    
+                l, r, t, b = from_yolo_toxy(m, (im0shape[0],
+                                            im0shape[1]))
+
+                yolocoords.append([l, r, t, b])
+
+    return xyxylist,yolocoords
+    
+
+def draw_frame(img, bbbox, dictlabels = None, default_color = (255,255,255)):
+    imgc = img.copy()
+    for i in range(len(bbbox)):
+        x1,x2,y1,y2 = bbbox[i]
+
+        widhtx = abs(x1 - x2)
+        heighty = abs(y1 - y2)
+
+        start_point = (x1, y1)
+        end_point = (x2,y2)
+        if dictlabels is not None:
+            color = dictlabels[i]['color']
+            label = dictlabels[i]['label']
+        else:
+            label = ''
+            color = default_color
+
+        thickness = 4
+        xtxt = x1 if x1 < x2 else x2
+        ytxt = y1 if y1 < y2 else y2
+        imgc = cv2.rectangle(imgc, start_point, end_point, color, thickness)
+        if label != '':
+
+            imgc = cv2.rectangle(imgc, (xtxt,ytxt), (xtxt + int(widhtx*0.8), ytxt - int(heighty*.2)), color, -1)
+            
+            imgc = cv2.putText(img=imgc, text=label,org=(xtxt + int(abs(x1-x2)/15),
+                                                            ytxt - int(abs(y1-y2)/20)), 
+                                                            fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1*((heighty)/200), color=(255,255,255), thickness=2)
+            
+    return imgc   
+
+def check_image(img, inputshape = (512,512)):
+
+    imgc = img.copy()
+
+    if len(imgc.shape) == 3:
+        imgc = np.expand_dims(imgc, axis=0)
+
+    if imgc.shape[3] == 3:
+        if (not imgc.shape[2] == inputshape[0]) and not (imgc.shape[3] == inputshape[1]):
+            imgc = cv2.resize(imgc[0], inputshape, interpolation=cv2.INTER_AREA)
+            imgc = np.expand_dims(imgc, axis=0)
+        imgc = imgc.swapaxes(3, 2).swapaxes(2, 1)
+    else:
+        imgc = imgc.swapaxes(1, 2).swapaxes(2, 3)
+        if (not imgc.shape[2] == inputshape[0]) and not (imgc.shape[3] == inputshape[1]):
+            imgc = cv2.resize(imgc[0], inputshape, interpolation=cv2.INTER_AREA)
+        imgc = imgc.swapaxes(3, 2).swapaxes(2, 1)
+
+    return imgc
+
+class DroneObjectDetection(DroneData):
+    
+    def draw_bb_in_tile(self,imgtile):
+        xyposhw,yoloimgcoords = self.predict_tile_coords(imgtile, conf_thres=0.50)
+        m= []
+        for l, r, t, b in yoloimgcoords:
+            m.append([l, r, t, b])
+
+        imgdraw = draw_frame(imgtile.copy().to_array().values.swapaxes(0,1).swapaxes(1,2), m)
+        return imgdraw
+
+
+    def predict_tile_coords(self, imgtile, **kwargs):
+
+        img0 = imgtile.copy().to_array().values
+        output = None
+        yolocoords = []
+        if not np.isnan(img0.sum()) and img0.shape[1] == img0.shape[2]:
+        
+            bbpredictions, img1 = self.predict(img0, **kwargs)
+            if img0.shape[0] == 3:
+                img0 = img0.swapaxes(0, 1).swapaxes(1, 2)
+            xyxylist,yolocoords = xyxy_predicted_box(bbpredictions, img0.shape, img1.shape)
+
+            ### save as shapefiles
+            crs_system = imgtile.attrs['crs']
+            polsshp_list = []
+            
+            if len(xyxylist):
+                for i in range(len(xyxylist)):
+                    bb_polygon = from_bbxarray_2polygon(xyxylist[i][0], imgtile)
+
+                    pred_score = np.round(xyxylist[i][2] * 100, 3)
+
+                    gdr = gpd.GeoDataFrame({'pred': [i],
+                                            'score': [pred_score],
+                                            'geometry': bb_polygon},
+                                        crs=crs_system)
+
+                    polsshp_list.append(gdr)
+                output = pd.concat(polsshp_list, ignore_index=True)
+
+        return output, yolocoords
+
+    def detect_oi_in_uavimage(self, imgsize = 512, overlap = None, aoi_limit = 0.5, onlythesetiles = None, **kwargs):
+        """
+        a function to detect opbect of interest in a RGB UAV image
+
+        parameters:
+        ------
+        imgpath: str:
+        """
+        overlap = [0] if overlap is None else overlap
+        allpols_pred = []
+        for spl in overlap:
+            self.split_into_tiles(width = imgsize, height = imgsize, overlap = spl) 
+            if onlythesetiles is not None:
+                tileslist =  onlythesetiles
+            else:
+                tileslist =  list(range(len(self._tiles_pols)))
+
+            for i in tileslist:
+                print(i)
+
+                
+                bbasgeodata, _ = self.predict_tile_coords(self.tiles_data(i), **kwargs)
+                
+                if bbasgeodata is not None:
+                    bbasgeodata['tile']= [i for j in range(bbasgeodata.shape[0])]
+                    allpols_pred.append(bbasgeodata)
+
+        allpols_pred_gpd = pd.concat(allpols_pred)
+        allpols_pred_gpd['id'] = [i for i in range(allpols_pred_gpd.shape[0])]
+
+        #allpols_pred_gpd.to_file("results/alltest_id.shp")
+        print("{} polygons were detected".format(allpols_pred_gpd.shape[0]))
+
+        total_objects = merging_overlaped_polygons(allpols_pred_gpd, aoi_limit = aoi_limit)
+        total_objects = merging_overlaped_polygons(pd.concat(total_objects), aoi_limit = aoi_limit)
+        total_objects = pd.concat(total_objects) 
+        print("{} boundary boxes were detected".format(total_objects.shape[0]))
+        
+        return total_objects
+
+    
+    def predict(self, image, conf_thres=0.5,
+                       iou_thres=0.45,
+                       classes=None,
+                       agnostic_nms=False,
+                       half = False,
+                       max_det=1000):
+
+        
+        imgc = check_image(image)
+        img = torch.from_numpy(imgc).to(self.device)
+        img = img.half() if half else img.float()
+        
+        img = img / 255.
+        print(img.shape)
+        bounding_box = self.model(img, augment=False)
+        pred = non_max_suppression(bounding_box, conf_thres, iou_thres, classes,
+                               agnostic_nms, max_det=max_det)
+        return pred, img
+
+    def __init__(self, inputpath, yolo_model = None, device = None, **kwargs) -> None:
+        
+        super().__init__(
+                 inputpath,
+                 **kwargs)
+
+        self.device = device
+        self.model = yolo_model
+
 
 #from od_data_awaji_2022.yolov5_master.models.experimental import attempt_load
 #from od_data_awaji_2022.yolov5_master.utils.torch_utils import select_device
@@ -35,20 +320,6 @@ def load_weights_model(wpath, device='', half=False):
 
 ### the following functions were taken from yolov5 
 
-def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
-    # Rescale coords (xyxy) from img1_shape to img0_shape
-    if ratio_pad is None:  # calculate from img0_shape
-        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
-        pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
-    else:
-        gain = ratio_pad[0][0]
-        pad = ratio_pad[1]
-
-    coords[:, [0, 2]] -= pad[0]  # x padding
-    coords[:, [1, 3]] -= pad[1]  # y padding
-    coords[:, :4] /= gain
-    clip_coords(coords, img0_shape)
-    return coords
 
 
 def box_iou(box1, box2, eps=1e-7):
@@ -70,6 +341,24 @@ def box_iou(box1, box2, eps=1e-7):
 
     # IoU = inter / (area1 + area2 - inter)
     return inter / ((a2 - a1).prod(2) + (b2 - b1).prod(2) - inter + eps)
+
+
+
+def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
+    # Rescale boxes (xyxy) from img1_shape to img0_shape
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+        pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+    else:
+        gain = ratio_pad[0][0]
+        pad = ratio_pad[1]
+
+    boxes[:, [0, 2]] -= pad[0]  # x padding
+    boxes[:, [1, 3]] -= pad[1]  # y padding
+    boxes[:, :4] /= gain
+    clip_boxes(boxes, img0_shape)
+    return boxes
+    
 
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     # Rescale coords (xyxy) from img1_shape to img0_shape
@@ -261,6 +550,27 @@ def xyxy2xywh(x):
     return y
 
 
+def from_yolo_toxy(yolo_style, size):
+    dh, dw = size
+    _, x, y, w, h = yolo_style
+
+    l = int((x - w / 2) * dw)
+    r = int((x + w / 2) * dw)
+    t = int((y - h / 2) * dh)
+    b = int((y + h / 2) * dh)
+
+    if l < 0:
+        l = 0
+    if r > dw - 1:
+        r = dw - 1
+    if t < 0:
+        t = 0
+    if b > dh - 1:
+        b = dh - 1
+
+    return (l, r, t, b)
+
+
 def xyxy_predicted_box(img, yolo_model, device, half = False,
                        conf_thres=0.5,
                        iou_thres=0.45,
@@ -271,7 +581,7 @@ def xyxy_predicted_box(img, yolo_model, device, half = False,
     imgc = img.copy()
     if img.shape[0] != 3:
         img = img.swapaxes(2,1).swapaxes(1,0)
-    #imgc = img.swapaxes(1, 0).swapaxes(2, 1)[:, :, [2, 1, 0]]
+    
     img = torch.from_numpy(img).to(device)
 
     img = img.half() if half else img.float()
@@ -282,18 +592,38 @@ def xyxy_predicted_box(img, yolo_model, device, half = False,
     pred = yolo_model(img, augment=False)[0]
     pred = non_max_suppression(pred, conf_thres, iou_thres, classes,
                                agnostic_nms, max_det=max_det)
+
+    
     xyxylist = []
+    yolocoords = []
+    if imgc.shape[0] == 3:
+        img0 = imgc.swapaxes(0,1).swapaxes(1,2)
+    else:
+        img0 = imgc
+    
     for i, det in enumerate(pred):
-        s, im0 = '', imgc.copy()
+        s, im0 = '', img0
         gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]
+        print(img.shape[2:])
         if len(det):
-            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+            print(det[:, :4])
+            #det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+            det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], im0.shape).round()
+            print(det)
             for *xyxy, conf, cls in det:
                 # Rescale boxes from img_size to im0 size
                 xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
                 xyxylist.append([torch.tensor(xyxy).tolist(), xywh, conf.tolist()])
+                m = [0]
+                for i in range(len(xywh)):
+                    m.append(xywh[i])
+                    
+                l, r, t, b = from_yolo_toxy(m, (im0.shape[0],
+                                            im0.shape[1]))
 
-    return xyxylist
+                yolocoords.append([l, r, t, b])
+
+    return xyxylist,yolocoords
 
 
 

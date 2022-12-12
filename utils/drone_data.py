@@ -8,18 +8,18 @@ import rioxarray as rio
 import os
 import glob
 
-from utils import data_processing
-from utils.plt_functions import plot_multibands_fromxarray
+from . import data_processing
+from .plt_functions import plot_multibands_fromxarray
 
 
 import matplotlib.pyplot as plt
 
-from utils import classification_functions as clf
+from . import classification_functions as clf
 import pandas as pd
 import geopandas as gpd
 
-from utils import gis_functions as gf
-from utils.xr_functions import split_xarray_data
+from . import gis_functions as gf
+from .xr_functions import split_xarray_data
 
 import re
 
@@ -187,6 +187,9 @@ def multiband_totiff(xrdata, filename, varnames=None):
     #    with rasterio.open(fn, 'w', **metadata) as dst:
     #        for id, layer in enumerate(imgstoexport, start=1):
     #            dst.write_band(id, layer)
+
+class UAVPlots():
+    pass
 
 class DroneData:
 
@@ -453,6 +456,7 @@ class DroneData:
         else:
             self._bands = bands
 
+        
         self._clusters = np.nan
         self._tiles_pols = None
 

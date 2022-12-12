@@ -4,10 +4,12 @@ import numpy as np
 import tqdm
 import pickle
 import xarray
-from utils.gis_functions import get_tiles
 from shapely.geometry import Polygon
 import richdem as rd
-import os
+
+
+from .gis_functions import get_tiles
+
 
 def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees', name4d = 'date'):
     """
