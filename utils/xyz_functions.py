@@ -207,7 +207,7 @@ def from_cloudpoints_to_xarray(dfpointcloud,
                                            crs = coords_system,
                                            bands_names = columns_name))
 
-    if len(xarraylist) == 1:
+    if len(xarraylist) > 1:
         mltxarray = xarray.concat(xarraylist, dim=dimension_name)
         mltxarray.assign_coords(date = [m+1 for m in range(len(dfpointcloud))])
     else:
@@ -520,7 +520,7 @@ class CloudPoints:
         if type(xyzfile) != list:
             xyzfile = [xyzfile]
 
-        if type(gpdpolygon) is gpd.GeoSeries:
+        if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
             gpdpolygon = gpdpolygon[0]
 
         self.xyzfile = xyzfile
