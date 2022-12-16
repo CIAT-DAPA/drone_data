@@ -207,8 +207,12 @@ def from_cloudpoints_to_xarray(dfpointcloud,
                                            crs = coords_system,
                                            bands_names = columns_name))
 
-    mltxarray = xarray.concat(xarraylist, dim=dimension_name)
-    mltxarray.assign_coords(date = [m+1 for m in range(len(dfpointcloud))])
+    if len(xarraylist) == 1:
+        mltxarray = xarray.concat(xarraylist, dim=dimension_name)
+        mltxarray.assign_coords(date = [m+1 for m in range(len(dfpointcloud))])
+    else:
+        mltxarray = xarraylist[0]
+
     if newdim_values is not None:
         if len(newdim_values) == len(dfpointcloud):
             mltxarray[dimension_name] = newdim_values
@@ -402,6 +406,28 @@ class CloudPoints:
         transform the cloud points file to a geospatial raster
     """
 
+
+    @property
+    def cloud_points(self):
+        return self._point_cloud
+
+    def _cloud_point(self):
+        cllist = []
+
+        for i in range(len(self.xyzfile)):
+            if self.verbose:
+                print(self.xyzfile[i])
+
+            gdf =  clip_cloudpoints_as_gpd(self.xyzfile[i],self.geometry, 
+                                            crs=self._crs,
+                                            buffer = self.buffer,
+                                            step = self.step)
+
+            cllist.append(gdf)
+            
+        self._point_cloud =  cllist   
+
+
     def to_xarray(self, sp_res = 0.01, 
                   newdim_values = None, 
                   interpolate = False, 
@@ -484,10 +510,6 @@ class CloudPoints:
                     step = 1000,
                     crs = 32654,
                     variables = ["z", "red","green", "blue"],
-                    asxarray = False,
-                    sp_res = 0.01,
-                    multiprocess = False,
-                    nworkers = 2, 
                     verbose = False,
                     ext = '.xyz'):
 
@@ -501,17 +523,27 @@ class CloudPoints:
         if type(gpdpolygon) is gpd.GeoSeries:
             gpdpolygon = gpdpolygon[0]
 
-        cllist = []
-        if multiprocess:
+        self.xyzfile = xyzfile
+        self.geometry = gpdpolygon
+        self.buffer = buffer
+        self.step = step
+        self.verbose = verbose
+        self._xyz_file_suffix = ext
+        self._cloud_point()
+
+
+
+"""
+        if self.multiprocess:
             #print("Multiprocess initialization")
             cloud_thread = []
-            with cf.ProcessPoolExecutor(max_workers=nworkers) as executor:
-                for i in range(len(xyzfile)):
-                    cloud_thread.append({executor.submit(clip_cloudpoints_as_gpd,xyzfile[i], 
-                                            gpdpolygon,
+            with cf.ProcessPoolExecutor(max_workers=self.nworkers) as executor:
+                for i in range(len(self.xyzfile)):
+                    cloud_thread.append({executor.submit(clip_cloudpoints_as_gpd,self.xyzfile[i], 
+                                            self.geometry,
                                             self._crs,
-                                            buffer,
-                                            step): i})
+                                            self.buffer,
+                                            self.step): i})
 
             cllist = []
             for future in cloud_thread:
@@ -520,27 +552,4 @@ class CloudPoints:
  
            
         else:
-            for i in range(len(xyzfile)):
-                if verbose:
-                    print(xyzfile[i])
-    
-                gdf =  clip_cloudpoints_as_gpd(xyzfile[i],gpdpolygon, 
-                                               crs=self._crs,
-                                               buffer = buffer,
-                                               step = step)
-                if asxarray:
-                    gdf = from_cloudpoints_to_xarray([gdf],
-                                   self.boundaries, 
-                                   self._crs,
-                                   self.variables_names,
-                                   spatial_res = sp_res,
-                                   newdim_values = 'date')
-                cllist.append(gdf)
-            
-            if asxarray:
-                lenimgs = len(cllist)
-                cllist = xarray.concat(cllist, dim='date')
-                cllist.assign_coords(date = [m+1 for m in range(lenimgs)])
-
-        self.cloud_points = cllist
-
+"""
