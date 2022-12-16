@@ -140,7 +140,7 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_pro
 #    dfcloudlist, image_shape,
 #)
 
-def from_cloudpoints_to_xarray(dfcloudlist, 
+def from_cloudpoints_to_xarray(dfpointcloud, 
                                bounds,
                                coords_system,
                                columns_name = ["z", "red","green", "blue"],
@@ -153,17 +153,40 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                                variogram_model = 'exponential',
                                ):
 
+    """
+    the point cloud is a 3D representated as points with coordinates in xand y, and with values in a third axis z. This function
+    transform the 3D representation to a 2D image. To obtain this, a rasterize processes is applied. The rasterization can be 
+    obtained from a vextorization or by spatial interpolation.
+
+    Parameters:
+    ----------
+    dfpointcloud: list
+        a list that contains all the oint cloud data frames to be processed
+    bounds: polygon
+        this is a geopandas geometry that will be used boundaries
+    coords_system: str
+        Coordinates system reference
+    spatial_res: float
+        Spatial reolution that the image will have in meters, default 0.01
+    interpolate: boolean
+        If it is True, an interpolation method will be applied, if not a rasterize (averagering points that intersect a cell) method is gonna be held.
+    
+    Return:
+    ----------
+    xarray
+
+    """
     trans, imgsize = transform_frombb(bounds, spatial_res)
     totallength = len(columns_name)+2
     xarraylist = []
-    for j in range(len(dfcloudlist)):
+    for j in range(len(dfpointcloud)):
         list_rasters = []
-        xycoords = dfcloudlist[j][[1,0]].values.copy()
+        xycoords = dfpointcloud[j][[1,0]].values.copy()
 
         for i in range(2,totallength):
-            valuestorasterize = dfcloudlist[j].iloc[:,[i]].iloc[:, 0].values
+            valuestorasterize = dfpointcloud[j].iloc[:,[i]].iloc[:, 0].values
             rasterinterpolated = rasterize_using_bb(valuestorasterize, 
-                                                    dfcloudlist[j].geometry, 
+                                                    dfpointcloud[j].geometry, 
                                                     transform = trans, imgsize =imgsize)
 
             
@@ -185,9 +208,9 @@ def from_cloudpoints_to_xarray(dfcloudlist,
                                            bands_names = columns_name))
 
     mltxarray = xarray.concat(xarraylist, dim=dimension_name)
-    mltxarray.assign_coords(date = [m+1 for m in range(len(dfcloudlist))])
+    mltxarray.assign_coords(date = [m+1 for m in range(len(dfpointcloud))])
     if newdim_values is not None:
-        if len(newdim_values) == len(dfcloudlist):
+        if len(newdim_values) == len(dfpointcloud):
             mltxarray[dimension_name] = newdim_values
         else:
             print("dimension and names length does not match")
@@ -285,7 +308,7 @@ def points_to_raster_interp(points, grid, method = "KNN",
                             knn = 5, weights = "distance",
                             variogram_model = 'hole-effect'):
     """
-    this function interpolates points where the surlt is an image
+    this function comput a spatial interpolation using 
 
     Parameters:
     ----------
@@ -343,7 +366,7 @@ def points_to_raster_interp(points, grid, method = "KNN",
 
 
 def points_rasterinterpolated(points, transform, rastershape, inter_method = 'KNN', **kargs):
-        from utils.gis_functions import coordinates_fromtransform
+        from .gis_functions import coordinates_fromtransform
         x, y = coordinates_fromtransform(transform,
                             [rastershape[1], rastershape[0]])
 
@@ -395,7 +418,7 @@ class CloudPoints:
             final spatial resolution used for vector rasterization
         newdim_values: str, optional
             reasign new names for the xarray dimensions
-        interpolate: str, optional
+        interpolate: boolean, optional
             which method will be applied to get the spatial image 
             ['rasterize', 'interpolation'], default rasterize
         inter_method: str, optional
@@ -474,6 +497,9 @@ class CloudPoints:
 
         if type(xyzfile) != list:
             xyzfile = [xyzfile]
+
+        if type(gpdpolygon) is gpd.GeoSeries:
+            gpdpolygon = gpdpolygon[0]
 
         cllist = []
         if multiprocess:

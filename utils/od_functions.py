@@ -8,6 +8,7 @@ import torch
 import time
 import torchvision
 import cv2
+import copy
 
 from . import gis_functions as gf
 from .data_processing import from_xarray_2array
@@ -663,7 +664,6 @@ def odboxes_per_xarray(xarraydata, yolo_model, device, half,
     return output,bb_predictions
 
 
-import copy
 def detect_oi_in_uavimage(drone_data, model, device, imgsize = 512, conf_thres = 0.65, aoi_limit = 0.5, roi = None, overlap = [0.25, 0.40]):
     
     if type(drone_data) is str:

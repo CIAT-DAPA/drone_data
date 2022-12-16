@@ -192,6 +192,22 @@ class UAVPlots():
     pass
 
 class DroneData:
+    """
+    Handles UAV images using xarray package.
+    Attributes
+    ----------
+    drone_data : xarray
+        UAV image in xarray format.
+    variable_names : list str
+        Spectral bands that compose the uav iamge.
+    
+
+    """
+
+    @property
+    def available_vi():
+        return VEGETATION_INDEX
+
 
     @property
     def variable_names(self):
@@ -226,6 +242,21 @@ class DroneData:
         return [npdata2dclean, idsnan]
 
     def calculate_vi(self, vi='ndvi', expression=None, label=None):
+        """
+        function to calculate vegetation indices
+
+        Parameters:
+        ----------
+        vi : str
+            vegetation index name, if the vegetatio index is into the list, it will compute it using the equation, otherwise it will be necessary to prodive it
+        expression: str, optional
+            equation to calculate the vegetation index, eg (nir - red)/(nir + red)
+        
+        Return:
+        ----------
+        None
+        """
+
         if vi == 'ndvi':
             if 'nir' in self.variable_names:
                 expression = '(nir - red) / (nir + red)' 
@@ -271,17 +302,26 @@ class DroneData:
         self._clusters = clusters
 
     def extract_usingpoints(self, points,
-                            bands=None, crs=None,
+                            crs=None,
+                            bands=None, 
                             long_direction=True):
         """
+        function to extract data using coordinates
 
-        :param points:
-        :param bands:
-        :param crs:
-        :param long_direction:
-        :return:
+        Parameters:
+        ----------
+        points : list
+            a list of coordinates with values in latitude and longitude
+        bands: list, optional
+            a list iwht the na,es of the spectral bands for extracting the data
+        crs: str, optional
+            
+        
+        Return:
+        ----------
+        None
         """
-
+        
         if bands is None:
             bands = self.variable_names
         if crs is None:
@@ -296,6 +336,7 @@ class DroneData:
 
             coords = pd.DataFrame(points)
 
+        
         geopoints = gpd.GeoDataFrame(coords,
                                      geometry=gpd.points_from_xy(coords.iloc[:, 0],
                                                                  coords.iloc[:, 1]),

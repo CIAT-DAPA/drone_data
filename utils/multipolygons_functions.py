@@ -167,7 +167,15 @@ def mergealldata(roi,id, rgbfiles = None, msfiles = None, xyzfiles = None,
                  exportxyz = True,
                  rgb_asreference = True):
 
-    
+    """
+    Function to merge UAV images from multiple-sources (RGB, Multispectral and 3D-cloud points)
+
+    Parameters:
+    ----------
+    roi: geopandas
+        bounding box to be used for extracting the data
+
+    """
     #roi = allpolygons.loc[id:id,:].copy()
     geom = roi.geometry.values.buffer(buffer, join_style=2)
     # process multispectral files if there is a list
