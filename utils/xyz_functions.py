@@ -457,8 +457,8 @@ class CloudPoints:
 
         """
         
-        rasterimg = from_cloudpoints_to_xarray(self.cloud_points,
-                                   self.boundaries, 
+        self.twod_image = from_cloudpoints_to_xarray(self.cloud_points,
+                                   self.geometry.bounds, 
                                    self._crs,
                                    self.variables_names,
                                    spatial_res = sp_res,
@@ -467,17 +467,8 @@ class CloudPoints:
                                    inter_method = inter_method,
                                    **kargs)
                                    
-        #elif method == 'interpolation':
-        ### TODO: interpolation metod knn 
-        """
-        from sklearn.neighbors import KNeighborsRegressor
-        zvalues = (points_perplant.cloud_points[0][2].values.copy()-bsl)*100
-        xycoords = points_perplant.cloud_points[0][[1,0]].values.copy()
-        knn_regressor = KNeighborsRegressor(n_neighbors = 7, weights = "distance")
-        knn_regressor.fit(xycoords, zvalues)
 
-        """
-        return rasterimg
+        return self.twod_image
 
     def remove_baseline(self, method= None, 
                         cloud_reference = 0, scale_height = 100, 
@@ -514,15 +505,16 @@ class CloudPoints:
                     ext = '.xyz'):
 
         self._crs =  crs     
-        self.boundaries = gpdpolygon.bounds
+        
         self.variables_names = variables
 
         if type(xyzfile) != list:
             xyzfile = [xyzfile]
 
         if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
-            gpdpolygon = gpdpolygon[0]
+            gpdpolygon = gpdpolygon.geometry[0]
 
+        self.boundaries = gpdpolygon.bounds
         self.xyzfile = xyzfile
         self.geometry = gpdpolygon
         self.buffer = buffer
