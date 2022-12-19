@@ -90,8 +90,8 @@ def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, sp_res = 0.005, ext='.xy
     heigth = abs(bb[1]-bb[3]) + buffer
     mindata = int(heigth/sp_res * width/sp_res)
     ### junp every step onf lines in the point cloud file
-    step = int(mindata*0.08)
-    
+    step = int(mindata*0.015)
+
     undermindata = True
     if file_path.endswith('.xyz'):
         folders = os.path.split(file_path)
@@ -321,12 +321,13 @@ def calculate_angle_twovectors(v1,v2):
     dot_product = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     return( np.arccos(dot_product))
 
-def clip_cloudpoints_as_gpd(file_name, bb, crs, buffer = 0.1, step = 100, ext = '.xyz'):
+def clip_cloudpoints_as_gpd(file_name, bb, crs, buffer = 0.1, sp_res = 0.005, ext = '.xyz'):
     
 
     dfcl = read_cloudpointsfromxyz(file_name,  
                             bb.bounds, 
-                            buffer = buffer,step = step,
+                            buffer = buffer,
+                            sp_res = sp_res,
                             ext =ext)
 
 
@@ -448,7 +449,7 @@ class CloudPoints:
             gdf =  clip_cloudpoints_as_gpd(self.xyzfile[i],self.geometry, 
                                             crs=self._crs,
                                             buffer = self.buffer,
-                                            step = self.step)
+                                            sp_res = self.spatial_res)
 
             cllist.append(gdf)
             
@@ -525,7 +526,7 @@ class CloudPoints:
                     xyzfile,
                     gpdpolygon,
                     buffer = 0.1,
-                    step = 1000,
+                    spatial_res = 0.01,
                     crs = 32654,
                     variables = ["z", "red","green", "blue"],
                     verbose = False,
@@ -545,7 +546,7 @@ class CloudPoints:
         self.xyzfile = xyzfile
         self.geometry = gpdpolygon
         self.buffer = buffer
-        self.step = step
+        self.spatial_res = spatial_res
         self.verbose = verbose
         self._xyz_file_suffix = ext
         self._cloud_point()
