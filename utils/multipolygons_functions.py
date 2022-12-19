@@ -483,6 +483,27 @@ def _set_dronedata(path, **kwargs):
     return data
 
 class IndividualUAVData(object):
+    """
+    A class to concatenate multiple sourcing data
+    """
+    @property
+    def rgb_data(self):
+        if self.uav_sources['rgb'] is not None:
+            data = clip_xarraydata(self.uav_sources['rgb'], 
+                self.spatial_boundaries.loc[:,'geometry'])
+        else:
+            data = None
+        return data
+
+    @property
+    def ms_data(self):
+        if self.uav_sources['ms'] is not None:
+            data = clip_xarraydata(self.uav_sources['ms'], 
+                self.spatial_boundaries.loc[:,'geometry'])
+        else:
+            data = None
+        return data
+
 
     def export_as_pickle(self, path = None, uav_image = 'stacked', preffix = None):
         if not os.path.exists(path):
@@ -493,16 +514,13 @@ class IndividualUAVData(object):
         with open(os.path.join(path, fn), "wb") as f:
                 pickle.dump(self.uav_sources[uav_image], f)
 
-
-
-
     def stack_uav_data(self, bufferdef = None, rgb_asreference = True):
 
         img_stacked =  stack_multisource_data(self.spatial_boundaries,
                                 ms_data = self.uav_sources['ms'], 
                                 rgb_data = self.uav_sources['rgb'], 
                                 pointclouddata = self.uav_sources['pointcloud'].twod_image, 
-                                bufferdef = None, rgb_asreference = True)
+                                bufferdef = bufferdef, rgb_asreference = rgb_asreference)
 
         self.uav_sources.update({'stacked':img_stacked})
 
@@ -536,12 +554,13 @@ class IndividualUAVData(object):
                  rgb_input = None,
                  ms_input = None,
                  threed_input = None,
-                 spatial_boundaries = None,
-                 **kwargs):
+                 spatial_boundaries = None):
 
         self.uav_sources = {'rgb': None,
                             'ms': None,
-                            'pointcloud': None}
+                            'pointcloud': None,
+                            'stacked': None}
+                            
         self._fnsuffix = ''
         self.rgb_path = rgb_input
         self.ms_input = ms_input
