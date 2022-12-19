@@ -398,3 +398,156 @@ def run_parallel_preprocessing_perpolygon(
 
     with open(outfn, "wb") as f:
         pickle.dump(xrdatac, f)
+
+
+
+
+import os
+from .gis_functions import find_shift_between2xarray,register_xarray,clip_xarraydata,resample_xarray
+import xarray
+import pickle
+
+import geopandas as gpd
+from .drone_data import DroneData
+from .xyz_functions import CloudPoints
+
+
+
+def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata = None, bufferdef = None, rgb_asreference = True):
+
+    imagelist = []
+
+    if pointclouddata is not None:
+        pointclouddata = pointclouddata.rename({'red':'red_3d',
+                     'blue':'blue_3d',
+                     'green':'green_3d'})
+
+    if rgb_data is not None and ms_data is not None:
+        # shift displacement correction using rgb data
+        shiftconv= find_shift_between2xarray(ms_data.drone_data, rgb_data.drone_data)
+        msregistered = register_xarray(ms_data.drone_data, shiftconv)
+
+        msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'], buffer = bufferdef)
+        mmrgbclipped = clip_xarraydata(rgb_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+
+        # stack multiple missions using multispectral images as reference
+        if rgb_asreference:
+            msclipped = resample_xarray(msclipped, mmrgbclipped, method = 'nearest')
+
+        else:
+            mmrgbclipped = resample_xarray(mmrgbclipped,msregistered)
+        
+        msclipped = msclipped.rename({'red':'red_ms',
+                     'blue':'blue_ms',
+                     'green':'green_ms'})
+        imagelist.append(mmrgbclipped)
+        imagelist.append(msclipped)
+
+        if pointclouddata is not None:
+            
+            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = 'nearest')
+            imagelist.append(pointclouddatares)
+
+    elif ms_data is not None:
+        msclipped = clip_xarraydata(ms_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+        imagelist.append(msclipped)
+        if pointclouddata is not None:
+            pointclouddatares = resample_xarray(pointclouddata,msclipped, method = 'nearest')
+            imagelist.append(pointclouddatares)
+
+    elif rgb_data is not None:
+        mmrgbclipped = clip_xarraydata(rgb_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+        imagelist.append(mmrgbclipped)
+        if pointclouddata is not None:
+            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = 'nearest')
+            imagelist.append(pointclouddatares)
+
+    else:
+        if pointclouddata is not None:
+            imagelist.append(pointclouddata)
+
+    if len(imagelist)>0:
+        if len(imagelist) == 1:
+            output = imagelist[0]
+        else:
+            output = xarray.merge(imagelist)
+        output.attrs['count'] =len(list(output.keys()))
+
+    return output
+
+def _set_dronedata(path, **kwargs):
+    if os.path.exists(path):
+        data = DroneData(path, **kwargs)
+    else:
+        raise ValueError('the path: {} does not exist'.format(path))
+    return data
+
+class IndividualUAVData(object):
+
+    def export_as_pickle(self, path = None, uav_image = 'stacked', preffix = None):
+        if not os.path.exists(path):
+            os.mkdir(path)
+        
+        if preffix is not None:
+            fn = '{}_{}.pickle'.format(preffix, list(self._fnsuffix))
+        with open(os.path.join(path, fn), "wb") as f:
+                pickle.dump(self.uav_sources[uav_image], f)
+
+
+
+
+    def stack_uav_data(self, bufferdef = None, rgb_asreference = True):
+
+        img_stacked =  stack_multisource_data(self.spatial_boundaries,
+                                ms_data = self.uav_sources['ms'], 
+                                rgb_data = self.uav_sources['rgb'], 
+                                pointclouddata = self.uav_sources['pointcloud'].twod_image, 
+                                bufferdef = None, rgb_asreference = True)
+
+        self.uav_sources.update({'stacked':img_stacked})
+
+        return img_stacked
+        
+    
+    def rgb_uavdata(self, **kwargs):
+        rgb_data = _set_dronedata(self.rgb_path, roi = self._boundaries_buffer, multiband_image=True, **kwargs)
+        self.uav_sources.update({'rgb':rgb_data})
+        self._fnsuffix = self._fnsuffix+ 'rgb'
+
+    def ms_uavdata(self, **kwargs):    
+        ms_data = _set_dronedata(self.ms_input, roi = self._boundaries_buffer, multiband_image=False, **kwargs)
+        self.uav_sources.update({'ms':ms_data})
+        self._fnsuffix = self._fnsuffix+ 'ms'
+
+    def pointcloud(self, interpolate = True, **kwargs):
+        
+        try:
+            if os.path.exists(self.threed_input):
+                pcloud_data = CloudPoints(self.threed_input,gpdpolygon= self.spatial_boundaries, verbose = False)
+                pcloud_data.to_xarray(interpolate = interpolate,**kwargs)
+                self._fnsuffix = self._fnsuffix+ 'pointcloud'
+        except:
+            pcloud_data = None
+            raise Warning('point cloud information was not found, check coordinates')
+        #points_perplant.to_xarray(sp_res=0.012, interpolate=False)
+        self.uav_sources.update({'pointcloud':pcloud_data})
+
+    def __init__(self, 
+                 rgb_input = None,
+                 ms_input = None,
+                 threed_input = None,
+                 spatial_boundaries = None,
+                 **kwargs):
+
+        self.uav_sources = {'rgb': None,
+                            'ms': None,
+                            'pointcloud': None}
+        self._fnsuffix = ''
+        self.rgb_path = rgb_input
+        self.ms_input = ms_input
+        self.threed_input = threed_input
+        self.spatial_boundaries = spatial_boundaries
+        ### read data with buffer
+        self._boundaries_buffer = spatial_boundaries.copy().buffer(0.6, join_style=2)
+
+

@@ -19,37 +19,41 @@ from sklearn.neighbors import KNeighborsRegressor
 from pykrige.ok import OrdinaryKriging
 
 
+
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
 
     cond1 = True
-    idx = 0
+    idinit = 0
     idx2 = step
+    
+    idxdif= 0
+    #this is a flag to point out that the file doesnt have all information
+    initfinalpos = [0,0]
     while cond1:
         try:
-            fl = linecache.getline(file_path,idx2).split(' ')[0]
-            cond2 = float(fl)>=(bb[0] - buffer)
+            firstvalueintherow = linecache.getline(file_path,idx2).split(' ')[0]
+            cond2 = float(firstvalueintherow)>=(bb[0] - buffer)
             if cond2:
-                cond1 =float(fl)<=(bb[2] + buffer)
+                initfinalpos = [idinit,idx2]
+                cond1 =float(firstvalueintherow)<=(bb[2] + buffer)
             else:
-                idx = idx2
+                idinit = idx2
             
             idx2+=step
         except:
-            idx2 = 0
-            cond1 = False
-    if idx != 0:
-        idxdif = idx2 - idx
-    else:
-        idxdif=0
+            break
+    
+    #if idinit != 0:
+    idxdif = initfinalpos[1] - initfinalpos[0]
 
-    if np.abs(idxdif) <2000:
+    if idxdif < 2000:
         idxdif=0
 
     linecache.clearcache()
-    return ([idx, idxdif])
+    return ([initfinalpos[0], idxdif])
 
 
-def valid(chunks, bb, buffer= 0.0):
+def filterdata_insidebounds(chunks, bb, buffer= 0.0):
 
     for chunk in chunks:
         mask = np.logical_and(
@@ -61,12 +65,34 @@ def valid(chunks, bb, buffer= 0.0):
             yield chunk.loc[mask]
             break
 
-def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz',mindata = 100):
+
+def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, sp_res = 0.005, ext='.xyz'):
     """
-    a function to read a cloud points file using sptial boundaries
+    a function to read a cloud points file using spatial boundaries
+
+    Parameters:
+    ----------
+    file_path: str
+        3d point cloud file location
+    bb: tuple
+        spatial bounding box
+    sp_res: float, optional
+        the camera spatial resolution in meters, default 0.005
+    ext: str, optional
+        which is the file extension, default '.xyz'
+
+    Return:
+    ----------
+    Pandas dataframe with columns (x, y , z , r, g , b)
 
     """
-    data = True
+    width = abs(bb[0]-bb[2]) + buffer
+    heigth = abs(bb[1]-bb[3]) + buffer
+    mindata = int(heigth/sp_res * width/sp_res)
+    ### junp every step onf lines in the point cloud file
+    step = int(mindata*0.08)
+    
+    undermindata = True
     if file_path.endswith('.xyz'):
         folders = os.path.split(file_path)
         file_path = folders[0]
@@ -76,29 +102,30 @@ def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, step = 1000, ext='.xyz',
         xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
     
     count = 0
-    while data:
+    dfp = []
+    sizefiles = 0
+    while undermindata:
+
         firstrow,chunksize = getchunksize_forxyzfile(
             os.path.join(file_path,xyzfilenames[count]), bb,buffer, step)
+        
         if chunksize>0:
             chunks = pd.read_csv(
                 os.path.join(file_path,xyzfilenames[count]),
                 skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
-
-            if count == 0:
-                df = pd.concat(valid(chunks, bb, buffer))
-                dfp =df.copy()
-                if len(dfp)>mindata:
-                    data = False
-            else:
-                df = pd.concat(valid(chunks, bb, buffer))
-                dfp = pd.concat([dfp,df])
+            
+            df = pd.concat(filterdata_insidebounds(chunks, bb, buffer))
+            dfp.append(df)
+            sizefiles = len(df) + sizefiles
         
-        if count >=(len(xyzfilenames)-1):
-           data = False
+        if count >=(len(xyzfilenames)-1) or sizefiles>mindata:
+           undermindata = False
         count +=1
-
-    if len(dfp)<mindata:
+    
+    if sizefiles<mindata:
         raise ValueError('Check the coordinates, there is no intesection in the file')
+    else:
+        dfp = pd.concat(dfp)
 
     return dfp
 
@@ -512,7 +539,7 @@ class CloudPoints:
             xyzfile = [xyzfile]
 
         if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
-            gpdpolygon = gpdpolygon.geometry[0]
+            gpdpolygon = gpdpolygon.reset_index().geometry[0]
 
         self.boundaries = gpdpolygon.bounds
         self.xyzfile = xyzfile
