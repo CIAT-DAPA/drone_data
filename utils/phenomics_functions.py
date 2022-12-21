@@ -399,6 +399,27 @@ class Phenomics:
 
     def plant_height_summary(self, varname = 'z', quantiles = [0.25,0.5,0.75], 
                              reduction_perc = None):
+        
+        """
+        a function to summarise the 2D heigth image into quantiles
+        ...
+        Parameters
+        ----------
+        varname : str, optional
+            this indicates the height variable name, default 'z'
+        quantiles: list, optional
+            the quantiles in which the data must be summarized, the values must be 
+            inside of a list
+        reduction_perc: float, optional
+            a value between 0 and 100, which determine the ratio that the image must be 
+            reduced. Starting from the edges.
+        ...
+        Returns
+        -------
+        pandas dataframe:
+
+        """
+
         self._ph_varname = varname
         
         if reduction_perc is not None:
@@ -413,6 +434,25 @@ class Phenomics:
         return self._phenomic_summary['plant_height'] 
 
     def leaf_angle_summary(self, varname = 'leaf_angle', quantiles = [0.25,0.5,0.75]):
+        """
+        a function to summarise and the leaf angle 2D image into quantiles
+        ...
+        Parameters
+        ----------
+        varname : str, optional
+            this indicates the leaf angle variable name, default 'leaf_angle'
+        quantiles: list, optional
+            the quantiles in which the data must be summarized, the values must be 
+            inside of a list
+        reduction_perc: float, optional
+            a value between 0 and 100, which determines the ratio that the image must be 
+            reduced. Starting from the edges.
+        ...
+        Returns
+        -------
+        pandas dataframe:
+
+        """
         self._langle_varname = varname
         self._phenomic_summary[
             'leaf_angle'] = get_df_quantiles(self.xrdata, 

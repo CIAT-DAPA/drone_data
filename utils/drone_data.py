@@ -175,18 +175,6 @@ def multiband_totiff(xrdata, filename, varnames=None):
         metadata['count'] = len(varnames)
         fn = "{}{}.tif".format(filename[:(suffix - 1)], "_".join(varnames))
         xrdata.rio.to_raster(fn)
-    #    imgstoexport = []
-
-    #    fname = ""
-    #    for varname in varnames:
-    #        fname = fname + "_" + varname
-    #        imgstoexport.append(xrdata[varname].data.copy())
-
-    #    fn = "{}{}.tif".format(filename[:(suffix - 1)], fname)
-    #    imgstoexport = np.array(imgstoexport).swapaxes(0,1)
-    #    with rasterio.open(fn, 'w', **metadata) as dst:
-    #        for id, layer in enumerate(imgstoexport, start=1):
-    #            dst.write_band(id, layer)
 
 class UAVPlots():
     pass

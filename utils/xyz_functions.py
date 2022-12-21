@@ -132,6 +132,17 @@ def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, sp_res = 0.005, ext='.xy
 
 def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_probability', 
                           quantile_val = .85, stdtimes = 1):
+    
+    """
+    a function to get the distribution value for a given quantile, for both border
+    ...
+    Parameters
+    ----------
+    nclusters:
+        if cluster method is activated, the number of cluster which the data will be clustered
+    nmaxcl:
+        number of cluter which will be used to average and obtain a baseline
+    """
 
 
     df = clouddf.copy()
