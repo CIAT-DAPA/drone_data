@@ -206,7 +206,23 @@ def run_parallel_preprocessing_perpolygon(
 ##########
 
 def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata = None, bufferdef = None, rgb_asreference = True):
+    """
+    a function to stack multiple UAV source data, curretnly it can merge data from MultiSpectral, RGB, and pointcloud data.
+    The point cloud data is extracted from a file type xyz which is pderived product from the RGB camera. This file was obtained from 
+    the sfm pix4D analysis. You don;t necesarly must have all three sources of data, you can leave the other sources as None if you don't have them.
+    ...
+    Parameters
+    ----------
+    roi: polygon
+        region of interest
+    ms_data: drone_data class, optional
+        multispectral information
+    rgb_data: drone_data class, optional
+        rgb information this is provided by a RGB high definition camera
+    pointclouddata: xarray class, optional
+        2d point cloud image
 
+    """
     imagelist = []
 
     if pointclouddata is not None:

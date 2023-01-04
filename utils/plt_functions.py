@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
+
+from .gis_functions import get_filteredimage
+
 import math
 
 def scaleminmax(values):
@@ -440,6 +443,20 @@ def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None,
     fig.colorbar(datatoplot, cax=cbar_ax)
 
 
+def adding_phfigure(altref, indcolors, xaxisref, yphreference, var, fontsize, vmin, vmax, vmaxl, ax = None):
+    ax.scatter(altref.iloc[:,1],
+                                altref.iloc[:,2],
+                                c = indcolors)              
+    #ax[j,i].axhline(y = yphreference, color = 'black', linestyle = '-')
+    ax.plot((xaxisref, xaxisref), (yphreference,yphreference), color = 'black', linestyle = '-')
+    ax.plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
+    ax.axhline(y = 0, color = 'black', linestyle = '-')
+    ax.set_title(var, fontsize=fontsize, fontweight='bold')
+    ax.set_xticks([])
+    ax.set_ylim(vmin, vmax+vmaxl)
+
+    return ax
+
 def plot_heights(xrdata, num_rows = 2, 
                      num_columns = 2, 
                      figsize = [10,10],
@@ -449,7 +466,10 @@ def plot_heights(xrdata, num_rows = 2,
                      label_name = 'Height (cm)', 
                      fontsize=12,
                      scalez = 100,
-                     phquantile = 0.5):
+                     phquantile = 0.5, 
+                     fig = None,
+                     ax = None,
+                     reduction_perc = None):
     """
     create a figure showing a 2d profile from a 3d image reconstruction
     ----------
@@ -481,8 +501,10 @@ def plot_heights(xrdata, num_rows = 2,
     if chanels_names is None:
         chanels_names = [np.datetime_as_string(i, unit='D') for i in xrdata.date.values ]
 
-    fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
-    
+    if fig is None and ax is None:
+        fig, ax = plt.subplots(nrows=num_rows, ncols=num_columns, figsize = figsize)
+    #else:
+    #    ax = fig.subplots(nrows=num_rows, ncols=num_columns, sharey=True)
     count = 0
     vars = chanels_names
     xrdatac = xrdata.copy()
@@ -490,16 +512,20 @@ def plot_heights(xrdata, num_rows = 2,
         xrdatac[height_name] = (xrdatac[height_name] - bsl)
         xrdatac[height_name] = xrdatac[height_name].where(xrdatac[height_name] > 0, np.nan)
         xrdatac[height_name] = xrdatac[height_name]*scalez 
+    if reduction_perc is not None:
+        xrdatac2 = get_filteredimage(xrdatac, heightvarname = 'z',red_perc = reduction_perc, clip_xarray=True)
+        data = xrdatac[height_name].values    
+    else:
+        data = xrdatac[height_name].values
 
-    data = xrdatac[height_name].values
     vmin = np.nanmin(data)
     vmax = np.nanmax(data)
     vmaxl = 1*(np.nanstd(data))
+
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
                 xrtestdf = xrdatac.isel(date = count).to_dataframe()
-
                 altref = xrtestdf.reset_index().loc[:,('x','y','z','red','green','blue')].dropna() 
                 indcolors = [[r/255.,g/255.,b/255.] for r,g,b in zip(
                 altref.iloc[:,3].values, 
@@ -509,26 +535,10 @@ def plot_heights(xrdata, num_rows = 2,
                 yphreference = np.nanquantile(altref[height_name].values[altref[height_name].values>0],phquantile )
                     
                 if num_rows>1:
-                    ax[j,i].scatter(altref.iloc[:,1],
-                                    altref.iloc[:,2],
-                                    c = indcolors)              
-                    ax[j,i].axhline(y = yphreference, color = 'black', linestyle = '-')
-                    ax[j,i].plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
-                    ax[j,i].axhline(y = 0, color = 'black', linestyle = '-')
-                    ax[j,i].set_title(vars[count], fontsize=fontsize, fontweight='bold')
-                    ax[j,i].set_xticks([])
-                    ax[j,i].set_ylim(vmin, vmax+vmaxl)
+                    ax[j,i] = adding_phfigure(altref, indcolors, xaxisref, yphreference, vars[count], fontsize, vmin, vmax, vmaxl, ax = ax[j,i])
                     
                 else:
-                    ax[i].scatter(altref.iloc[:,1],
-                                    altref.iloc[:,2],
-                                    c = indcolors) 
-                    ax[i].axhline(y = yphreference, color = 'black', linestyle = '-')
-                    ax[i].plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
-                    ax[i].axhline(y = 0, color = 'black', linestyle = '-')
-                    ax[i].set_title(vars[count], fontsize=fontsize, fontweight='bold')
-                    ax[i].set_xticks([])
-                    ax[i].set_ylim(vmin, vmax+vmaxl)
+                    ax[i] = adding_phfigure(altref, indcolors, xaxisref, yphreference, vars[count], fontsize, vmin, vmax, vmaxl, ax = ax[i])
 
                 count +=1
             else:
@@ -546,7 +556,7 @@ def plot_heights(xrdata, num_rows = 2,
     #plt.xlabel('Common X-Axis', fontsize=15, fontweight='bold')
     plt.ylabel(label_name, fontsize=int(fontsize*2), fontweight='bold')
 
-    plt.show()
+    #plt.show()
     #cbar = plt.colorbar(data.ravel())
     #cbar.set_label('X+Y')
     #cmap = mpl.cm.viridis

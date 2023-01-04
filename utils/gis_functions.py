@@ -334,7 +334,7 @@ def coordinates_fromtransform(transform, imgsize):
 
 def list_tif_2xarray(listraster, transform, crs, nodata=0, bands_names=None):
     """
-    This function transform rater layers to a xarray data
+    This function transform raster layers to an xarray data
     """
     metadata = {
         'transform': transform,
@@ -521,7 +521,21 @@ def best_polygon(overlaylist):
 
 def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0, clip_xarray = False):
     """
-    Mask a xarray data using a reduction percentage
+    Mask a xarray data using percentage
+
+    Parameters:
+    ---------
+
+    heightvarname: str, optional
+        Height variable name
+    red_perc: int
+        the value that will indicate the final image reduction, 100 will indicate that there won't apply any reduction, 0 will rid off the whole image
+    clip_xarray: boolean, optional
+        if the value is true, this willl also reduce the image extension, deafault is False
+    
+    Return:
+    --------
+    xarray
 
     """
     if len(list(xrdata.dims.keys())) >=3:
