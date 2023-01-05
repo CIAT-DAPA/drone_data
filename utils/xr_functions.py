@@ -8,7 +8,121 @@ from shapely.geometry import Polygon
 import richdem as rd
 
 
-from .gis_functions import get_tiles
+from .gis_functions import get_tiles, resize_3dxarray
+from .gis_functions import resample_xarray
+
+
+
+def stack_as4dxarray(xarraylist, 
+                     sizemethod='max',
+                     axis_name = 'date', 
+                     valuesaxis_names = None,
+                     new_dimpos = 0,
+                     resizeinter_method = 'nearest'):
+    """
+    this function is used to stack multiple xarray along a time axis 
+    the new xarray value will have dimension {T x C x H x W}
+
+    Parameters:
+    ---------
+    xarraylist: list
+        list of xarray
+    sizemethod: str, optional
+        each xarray will be resized to a common size, the choosen size will be the maximun value in x and y or the average
+        {'max' , 'mean'} default: 'max'
+    axis_name: str, optional
+        dimension name assigned to the 3 dimensional axis, default 'date' 
+    valuesaxis_name: list, optional
+        values for the 3 dimensional axis
+    resizeinter_method:
+        which resize method will be used to interpolate the grid, this uses cv2
+         ({"bilinear", "nearest", "bicubic"}, default: "nearest")
+    
+    Return:
+    ----------
+    xarray of dimensions {T x C x H x W}
+
+    """
+    if type(xarraylist) is not list:
+        raise ValueError('Only list xarray are allowed')
+
+    ydim, xdim = list(xarraylist[0].dims.keys())
+
+    coordsvals = [[xarraylist[i].dims[xdim],
+                   xarraylist[i].dims[ydim]] for i in range(len(xarraylist))]
+
+    if sizemethod == 'max':
+        sizex, sizexy = np.max(coordsvals, axis=0).astype(np.uint)
+    elif sizemethod == 'mean':
+        sizex, sizexy = np.mean(coordsvals, axis=0).astype(np.uint)
+
+    # transform each multiband xarray to a standar dims size
+
+    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], interpolation=resizeinter_method, blur = False)
+    xarrayref = xarrayref.assign_coords({axis_name : valuesaxis_names[0]})
+    xarrayref = xarrayref.expand_dims(dim = {axis_name:1}, axis = new_dimpos)
+
+    resmethod = 'linear' if resizeinter_method != 'nearest' else resizeinter_method
+
+    xarrayref = adding_newxarray(xarrayref, 
+                     xarraylist[1:],
+                     valuesaxis_names=valuesaxis_names[1:], method = resmethod)
+
+    xarrayref.attrs['count'] = len(list(xarrayref.keys()))
+    
+    return xarrayref
+
+
+def adding_newxarray(xarray_ref,
+                     new_xarray,
+                     axis_name = 'date',
+                     valuesaxis_names = None,
+                     resample_method = 'nearest'):
+    """
+    function to add new data to a previous multitemporal imagery
+    
+    Parameters
+    ----------
+    xarray_ref : xarray.core.dataset.Dataset
+        multitemporal data that will be used as reference
+
+    new_xarray: xarray.core.dataset.Dataset
+        new 2d data that will be added to xarray used as reference
+    axis_name: str, optional
+        dimension name assigned to the 3 dimensional axis, default 'date' 
+    valuesaxis_name: list, optional
+        values for the 3 dimensional axis
+
+    Return
+    ----------
+    xarray of 3 dimensions
+    
+    """
+    if type(xarray_ref) is not xarray.core.dataset.Dataset:
+        raise ValueError('Only xarray is allowed')
+    
+    new_xarray = new_xarray if type(new_xarray) is list else [new_xarray]
+    if valuesaxis_names is None:
+        valuesaxis_names = [i for i in range(len(new_xarray))]
+    
+    # find axis position
+    dimpos = [i for i,dim in enumerate(xarray_ref.dims.keys()) if dim == axis_name][0]
+
+    # transform each multiband xarray to a standar dims size
+    singlexarrayref = xarray_ref.isel({axis_name:0})
+    listdatesarray = []
+    for i in range(len(new_xarray)):
+        arrayresizzed = resample_xarray(new_xarray[i], singlexarrayref, method = resample_method)
+
+        arrayresizzed = arrayresizzed.assign_coords({axis_name : valuesaxis_names[i]})
+        arrayresizzed = arrayresizzed.expand_dims(dim = {axis_name:1}, axis = dimpos)
+        listdatesarray.append(arrayresizzed)
+
+    mltxarray = xarray.concat(listdatesarray, dim=axis_name)    
+    # concatenate with previous results
+    xarrayupdated = xarray.concat([xarray_ref,mltxarray], dim=axis_name)
+    xarrayupdated.attrs['count'] = len(list(xarrayupdated.keys()))
+    return xarrayupdated
 
 
 def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees', name4d = 'date'):

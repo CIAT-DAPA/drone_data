@@ -255,6 +255,7 @@ def resample_xarray(xarraydata, xrreference, method='linear'):
     """
     Function to resize an xarray data and update its attributes based on another xarray reference 
     this script is based on the xarray's interp() function
+
     Parameters:
     -------
     xarraydata: xarray
@@ -266,6 +267,7 @@ def resample_xarray(xarraydata, xrreference, method='linear'):
         ({"linear", "nearest", "zero", "slinear", "quadratic", "cubic", "polynomial"}, default: "linear")
     
     Returns:
+    -------
     a xarray data with new dimensions
     """
 
@@ -841,41 +843,6 @@ def resize_3dxarray(xrdata, new_size, bands = None,
                               bands_names=varnames)
 
     return xrdata
-
-
-def stack_as4dxarray(xarraylist, 
-                     dateslist=None, 
-                     sizemethod='max', **kargs):
-    if type(xarraylist) is not list:
-        raise ValueError('Only list xarray are allowed')
-
-    ydim, xdim = list(xarraylist[0].dims.keys())
-
-    coordsvals = [[xarraylist[i].dims[xdim],
-                   xarraylist[i].dims[ydim]] for i in range(len(xarraylist))]
-
-    if sizemethod == 'max':
-        sizex, sizexy = np.max(coordsvals, axis=0).astype(np.uint)
-    elif sizemethod == 'mean':
-        sizex, sizexy = np.mean(coordsvals, axis=0).astype(np.uint)
-
-    # transform each multiband xarray to a standar dims size
-
-    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], **kargs)
-    listdatesarray = []
-    for i in range(len(xarraylist)):
-        listdatesarray.append(resample_xarray(xarraylist[i], xarrayref))
-
-    if dateslist is None:
-        dateslist = [i for i in range(len(listdatesarray))]
-
-    mltxarray = xarray.concat(listdatesarray, dim='date')
-    mltxarray['date'] = dateslist
-    mltxarray.attrs['count'] = len(list(mltxarray.keys()))
-    return mltxarray
-
-
-# filter
 
 
 def filter_3Dxarray_usingradial(xrdata,

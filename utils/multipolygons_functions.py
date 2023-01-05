@@ -8,7 +8,8 @@ import geopandas as gpd
 
 from . import drone_data
 from .data_processing import find_date_instring
-from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray, stack_as4dxarray
+from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
+from .xr_functions import stack_as4dxarray
 from .xyz_functions import CloudPoints
 from .xyz_functions import get_baseline_altitude
 from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
@@ -205,7 +206,10 @@ def run_parallel_preprocessing_perpolygon(
 
 ##########
 
-def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata = None, bufferdef = None, rgb_asreference = True):
+def stack_multisource_data(roi,ms_data = None, 
+                           rgb_data = None, pointclouddata = None, 
+                           bufferdef = None, rgb_asreference = True, 
+                           resamplemethod = 'nearest'):
     """
     a function to stack multiple UAV source data, curretnly it can merge data from MultiSpectral, RGB, and pointcloud data.
     The point cloud data is extracted from a file type xyz which is pderived product from the RGB camera. This file was obtained from 
@@ -221,6 +225,9 @@ def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata =
         rgb information this is provided by a RGB high definition camera
     pointclouddata: xarray class, optional
         2d point cloud image
+    resample_method: str, optional
+        insterpolation method that will be used to resample the image
+         ({"linear", "nearest", "zero", "slinear", "quadratic", "cubic", "polynomial"}, default: "nearest")
 
     """
     imagelist = []
@@ -230,21 +237,22 @@ def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata =
                      'blue':'blue_3d',
                      'green':'green_3d'})
 
-    if rgb_data is not None and ms_data is not None:
+    if rgb_data is not None and ms_data is not None and pointclouddata is not None:
         # shift displacement correction using rgb data
-        shiftconv= find_shift_between2xarray(ms_data.drone_data, rgb_data.drone_data)
-        msregistered = register_xarray(ms_data.drone_data, shiftconv)
-
-        msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'], buffer = bufferdef)
-        mmrgbclipped = clip_xarraydata(rgb_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+        shiftconv= find_shift_between2xarray(ms_data, rgb_data)
+        msregistered = register_xarray(ms_data, shiftconv)
 
         # stack multiple missions using multispectral images as reference
         if rgb_asreference:
-            msclipped = resample_xarray(msclipped, mmrgbclipped, method = 'nearest')
+            msregistered = resample_xarray(msregistered, rgb_data, method = resamplemethod)
 
         else:
-            mmrgbclipped = resample_xarray(mmrgbclipped,msregistered)
+            rgb_data = resample_xarray(rgb_data,msregistered)
         
+        ## clip to the original boundaries
+        msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'], buffer = bufferdef)
+        mmrgbclipped = clip_xarraydata(rgb_data, roi.loc[:,'geometry'], buffer = bufferdef)
+
         msclipped = msclipped.rename({'red':'red_ms',
                      'blue':'blue_ms',
                      'green':'green_ms'})
@@ -252,22 +260,21 @@ def stack_multisource_data(roi,ms_data = None, rgb_data = None, pointclouddata =
         imagelist.append(msclipped)
 
         if pointclouddata is not None:
-            
-            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = 'nearest')
+            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = resamplemethod)
             imagelist.append(pointclouddatares)
 
     elif ms_data is not None:
-        msclipped = clip_xarraydata(ms_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+        msclipped = clip_xarraydata(ms_data, roi.loc[:,'geometry'], buffer = bufferdef)
         imagelist.append(msclipped)
         if pointclouddata is not None:
-            pointclouddatares = resample_xarray(pointclouddata,msclipped, method = 'nearest')
+            pointclouddatares = resample_xarray(pointclouddata,msclipped, method = resamplemethod)
             imagelist.append(pointclouddatares)
 
     elif rgb_data is not None:
-        mmrgbclipped = clip_xarraydata(rgb_data.drone_data, roi.loc[:,'geometry'], buffer = bufferdef)
+        mmrgbclipped = clip_xarraydata(rgb_data, roi.loc[:,'geometry'], buffer = bufferdef)
         imagelist.append(mmrgbclipped)
         if pointclouddata is not None:
-            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = 'nearest')
+            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = resamplemethod)
             imagelist.append(pointclouddatares)
 
     else:
@@ -290,15 +297,19 @@ def _set_dronedata(path, **kwargs):
         raise ValueError('the path: {} does not exist'.format(path))
     return data
 
+RGB_BANDS = ["red","green","blue"] ### this order is because the rgb uav data is stacked
+MS_BANDS = ['blue', 'green', 'red', 'edge', 'nir']
 
 class IndividualUAVData(object):
     """
     A class to concatenate multiple sourcing data
     """
+    
+
     @property
     def rgb_data(self):
-        if self.uav_sources['rgb'] is not None:
-            data = clip_xarraydata(self.uav_sources['rgb'], 
+        if self.uav_sources['rgb']:
+            data = clip_xarraydata(self.uav_sources['rgb'].drone_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
         else:
             data = None
@@ -306,8 +317,8 @@ class IndividualUAVData(object):
 
     @property
     def ms_data(self):
-        if self.uav_sources['ms'] is not None:
-            data = clip_xarraydata(self.uav_sources['ms'], 
+        if self.uav_sources['ms']:
+            data = clip_xarraydata(self.uav_sources['ms'].drone_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
         else:
             data = None
@@ -323,13 +334,14 @@ class IndividualUAVData(object):
         with open(os.path.join(path, fn), "wb") as f:
                 pickle.dump(self.uav_sources[uav_image], f)
 
-    def stack_uav_data(self, bufferdef = None, rgb_asreference = True):
+    def stack_uav_data(self, bufferdef = None, rgb_asreference = True, resample_method = 'nearest'):
 
         img_stacked =  stack_multisource_data(self.spatial_boundaries,
-                                ms_data = self.uav_sources['ms'], 
-                                rgb_data = self.uav_sources['rgb'], 
+                                ms_data = self.uav_sources['ms'].drone_data, 
+                                rgb_data = self.uav_sources['rgb'].drone_data, 
                                 pointclouddata = self.uav_sources['pointcloud'].twod_image, 
-                                bufferdef = bufferdef, rgb_asreference = rgb_asreference)
+                                bufferdef = bufferdef, rgb_asreference = rgb_asreference,
+                                resamplemethod = resample_method)
 
         self.uav_sources.update({'stacked':img_stacked})
 
@@ -337,12 +349,24 @@ class IndividualUAVData(object):
         
     
     def rgb_uavdata(self, **kwargs):
-        rgb_data = _set_dronedata(self.rgb_path, roi = self._boundaries_buffer, multiband_image=True, **kwargs)
+        """
+        read rgb data
+        """
+        if self.rgb_bands is None:
+            self.rgb_bands  = RGB_BANDS
+
+        rgb_data = _set_dronedata(self.rgb_path, roi = self._boundaries_buffer, multiband_image=True, bands = self.rgb_bands, **kwargs)
         self.uav_sources.update({'rgb':rgb_data})
         self._fnsuffix = self._fnsuffix+ 'rgb'
 
     def ms_uavdata(self, **kwargs):    
-        ms_data = _set_dronedata(self.ms_input, roi = self._boundaries_buffer, multiband_image=False, **kwargs)
+        """
+        read multi spectral data
+        """
+        if self.ms_bands is None:
+            self.ms_bands = MS_BANDS
+
+        ms_data = _set_dronedata(self.ms_input, roi = self._boundaries_buffer, multiband_image=False, bands = self.ms_bands, **kwargs)
         self.uav_sources.update({'ms':ms_data})
         self._fnsuffix = self._fnsuffix+ 'ms'
 
@@ -363,7 +387,13 @@ class IndividualUAVData(object):
                  rgb_input = None,
                  ms_input = None,
                  threed_input = None,
-                 spatial_boundaries = None):
+                 spatial_boundaries = None,
+                 rgb_bands = None,
+                 ms_bands = None,
+        ):
+
+        self.rgb_bands = rgb_bands
+        self.ms_bands = ms_bands
 
         self.uav_sources = {'rgb': None,
                             'ms': None,

@@ -30,7 +30,12 @@ def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_wid
     plt.show()
 
 def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinverse = True):
+    """
+    This function will plot an xarray data in RGB format
 
+    Parameters:
+    ----------
+    """
     threebanddata = []
     for i in bands:
         banddata = xarradata[i].data
