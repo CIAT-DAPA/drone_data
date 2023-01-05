@@ -66,7 +66,7 @@ def stack_as4dxarray(xarraylist,
 
     xarrayref = adding_newxarray(xarrayref, 
                      xarraylist[1:],
-                     valuesaxis_names=valuesaxis_names[1:], method = resmethod)
+                     valuesaxis_names=valuesaxis_names[1:], resample_method = resmethod)
 
     xarrayref.attrs['count'] = len(list(xarrayref.keys()))
     
