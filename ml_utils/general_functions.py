@@ -102,7 +102,10 @@ class SplitIds(object):
             self.test_ids = None
 
         self.training_ids, self.test_ids = split_idsintwo(self.ids_length, self.ids, test_perc,self.test_ids, self.seed)
-        self.training_ids, self.val_ids = split_idsintwo(len(self.training_ids), self.training_ids, val_perc, seed = self.seed)
+        if val_perc is not None:
+            self.training_ids, self.val_ids = split_idsintwo(len(self.training_ids), self.training_ids, val_perc, seed = self.seed)
+        else:
+            self.val_ids = None
         
             
 

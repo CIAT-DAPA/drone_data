@@ -209,11 +209,12 @@ def mae(real, prediction):
     real, prediction = check_real_predictionshapes(real, prediction)
     real, prediction = np.array(real), np.array(prediction)
     return np.mean(np.abs(real - prediction))
-
-def prmse(real, prediction):
+    
+##https://www.sciencedirect.com/topics/engineering/root-mean-square-error
+def rrmse(real, prediction):
     real, prediction = check_real_predictionshapes(real, prediction)
-    EPSILON =  1e-10 
-    return (np.sqrt(np.mean(np.square((real - prediction) / (real + EPSILON))))) * 100
+    EPSILON =  1e-10 ## avoid errors caused when dividing using 0
+    return (np.sqrt(np.mean((real - prediction)**2)) / (np.mean(real) + EPSILON)) * 100
 
 
 def get_eval_metrics(real, prediction):
@@ -222,7 +223,7 @@ def get_eval_metrics(real, prediction):
                                 y_pred=prediction)],
                 'rmse': [math.sqrt(mean_squared_error(y_true=real,
                                 y_pred=prediction))],
-                'prmse': [prmse(real=real,
+                'rrmse': [rrmse(real=real,
                                 prediction=prediction)],
                 'mae': [mae(real=real,
                                 prediction=prediction)]}))
