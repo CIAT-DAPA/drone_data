@@ -10,7 +10,7 @@ import richdem as rd
 
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
-
+from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
 
 
 def stack_as4dxarray(xarraylist, 
@@ -362,3 +362,29 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
 
 
 
+def shift_andregister_xarray(xrimage, xrreference, boundary = None):
+    """
+    function register and displace a xrdata using another xrdata as reference
+    
+    Parameters
+    ----------
+    xrimage: xrdataset
+        data to be regeistered
+    xrreference: xrdataset
+        data sed as reference to register for resize and displacement
+    boundary: shapely, optional
+        spatial polygon that will be used to clip both datasets
+
+    """
+
+    shiftconv= find_shift_between2xarray(xrimage, xrreference)
+
+    msregistered = register_xarray(xrimage, shiftconv)
+
+    if boundary is not None:
+        msregistered = clip_xarraydata(msregistered,  boundary)
+        xrreference = clip_xarraydata(xrreference,  boundary)
+        
+    msregistered = resample_xarray(msregistered, xrreference)
+
+    return msregistered, xrreference

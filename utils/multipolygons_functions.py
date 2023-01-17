@@ -390,6 +390,7 @@ class IndividualUAVData(object):
                  spatial_boundaries = None,
                  rgb_bands = None,
                  ms_bands = None,
+                 buffer = 0.6,
         ):
 
         self.rgb_bands = rgb_bands
@@ -406,6 +407,6 @@ class IndividualUAVData(object):
         self.threed_input = threed_input
         self.spatial_boundaries = spatial_boundaries
         ### read data with buffer
-        self._boundaries_buffer = spatial_boundaries.copy().buffer(0.6, join_style=2)
+        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
 
 

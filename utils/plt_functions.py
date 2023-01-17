@@ -236,7 +236,7 @@ def plot_multichanels(data, num_rows = 2,
                      fontsize=12, 
                      legfontsize = 15,
                      legtickssize = 15,
-                     colorbar = True):
+                     colorbar = True, vmin = None, vmax = None):
     """
     create a figure showing one channel or multiple channels
     ----------
@@ -274,8 +274,10 @@ def plot_multichanels(data, num_rows = 2,
     count = 0
     vars = chanels_names
     cmaptxt = plt.get_cmap(cmap)
-    vmin = np.nanmin(data)
-    vmax = np.nanmax(data)
+    if vmin is None:
+        vmin = np.nanmin(data)
+    if vmax is None:
+        vmax = np.nanmax(data)
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
