@@ -479,7 +479,23 @@ class DroneData:
                  roi = None,
                  table=False,
                  bounds = None):
+        """
+        Parameters:
+        ----------
+        inputpath: string
+            path where the information is located
 
+        bands: list o strings, optional
+            which names will have the channels
+
+        multiband_image: Boolean, optioanl
+            a boolean to treat the data as a multistack object or the data is composed by 
+            separated bands
+
+        bounds:  GeoJSON-like dict, optional
+            shapes that will be used to clip the image using rasterio.mask module
+
+        """
         if bands is None:
             self._bands = ['red', 'green', 'blue']
         else:
@@ -509,11 +525,11 @@ class DroneData:
         else:
             raise ValueError('Non file path was found')
             
-        if roi is not None:
-            self.clip_using_gpd(roi, replace = True)
+        #if roi is not None:
+        #    self.clip_using_gpd(roi, replace = True)
 
-        if table:
-            self._data, self._nanindex = self.data_astable()
+        #if table:
+            #self._data, self._nanindex = self.data_astable()
 
 
 

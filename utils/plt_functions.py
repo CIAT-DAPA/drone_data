@@ -352,7 +352,8 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                           figsize = (20,20), scale = 255., 
                           bands =['red','green','blue'],
                           savedir = None,
-                          fontsize = 15):
+                          fontsize = 15,
+                          titlelabel = True):
     """
     create a figure showing one ataked multiband figure
     ----------
@@ -371,7 +372,8 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
         a number for setting legend title size.
     savedir: str, optional
         a directory path where will be used to save the image
-
+    titlelabel: boolean, optional
+        add title to each panel
     Returns
     -------
     fig: a matplotlib firgure
@@ -395,16 +397,18 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                 if nrows > 1:
                     axs[xi,yi].imshow(datatoplot)
                     axs[xi,yi].set_axis_off()
-                    axs[xi,yi].set_title(np.datetime_as_string(
-                        xarraydata.date.values[cont], unit='D'), fontsize=fontsize)
+                    if titlelabel:
+                        axs[xi,yi].set_title(np.datetime_as_string(
+                            xarraydata.date.values[cont], unit='D'), fontsize=fontsize)
                     axs[xi,yi].invert_xaxis()
 
                     cont+=1
                 else:
                     axs[yi].imshow(datatoplot)
                     axs[yi].set_axis_off()
-                    axs[yi].set_title(np.datetime_as_string(
-                        xarraydata.date.values[yi], unit='D'), fontsize=fontsize)
+                    if titlelabel:
+                        axs[yi].set_title(np.datetime_as_string(
+                            xarraydata.date.values[yi], unit='D'), fontsize=fontsize)
                     axs[yi].invert_xaxis()
                     cont = yi+1
                 

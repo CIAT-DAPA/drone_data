@@ -355,7 +355,11 @@ class IndividualUAVData(object):
         if self.rgb_bands is None:
             self.rgb_bands  = RGB_BANDS
 
-        rgb_data = _set_dronedata(self.rgb_path, roi = self._boundaries_buffer, multiband_image=True, bands = self.rgb_bands, **kwargs)
+        rgb_data = _set_dronedata(
+            self.rgb_path, 
+            bounds = [self._boundaries_buffer[0].__geo_interface__['features'][0]['geometry']], 
+            multiband_image=True, 
+            bands = self.rgb_bands, **kwargs)
         self.uav_sources.update({'rgb':rgb_data})
         self._fnsuffix = self._fnsuffix+ 'rgb'
 
@@ -366,7 +370,11 @@ class IndividualUAVData(object):
         if self.ms_bands is None:
             self.ms_bands = MS_BANDS
 
-        ms_data = _set_dronedata(self.ms_input, roi = self._boundaries_buffer, multiband_image=False, bands = self.ms_bands, **kwargs)
+
+        ms_data = _set_dronedata(self.ms_input, 
+                    bounds = [self._boundaries_buffer[0].__geo_interface__['features'][0]['geometry']],
+                    multiband_image=False, bands = self.ms_bands, **kwargs)
+
         self.uav_sources.update({'ms':ms_data})
         self._fnsuffix = self._fnsuffix+ 'ms'
 
@@ -374,7 +382,9 @@ class IndividualUAVData(object):
         
         try:
             if os.path.exists(self.threed_input):
-                pcloud_data = CloudPoints(self.threed_input,gpdpolygon= self.spatial_boundaries, verbose = False)
+                pcloud_data = CloudPoints(self.threed_input,
+                                gpdpolygon= self.spatial_boundaries, 
+                                verbose = False)
                 pcloud_data.to_xarray(interpolate = interpolate,**kwargs)
                 self._fnsuffix = self._fnsuffix+ 'pointcloud'
         except:
@@ -407,6 +417,6 @@ class IndividualUAVData(object):
         self.threed_input = threed_input
         self.spatial_boundaries = spatial_boundaries
         ### read data with buffer
-        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
+        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2).reset_index()
 
 
