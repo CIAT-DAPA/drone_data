@@ -8,7 +8,7 @@ import pandas as pd
 from dateutil.parser import parse
 import re
 import random
-from sklearn import linear_model
+#from sklearn import linear_model
 
 
 def is_date(string, fuzzy=False):
@@ -269,6 +269,7 @@ def get_vi_ts(df, npattern = ['ndvi']):
         tsdata = tsdata.filter(regex=i)
 
     return np.expand_dims(tsdata.values,2)
+"""
 
 def get_linear_coefficients_fromtwoarrays(data, reference, verbose = True):
     
@@ -284,7 +285,7 @@ def get_linear_coefficients_fromtwoarrays(data, reference, verbose = True):
         print("{} + X * {}".format(np.squeeze(regr.intercept_), np.squeeze(regr.coef_)))
 
     return np.squeeze(regr.intercept_), np.squeeze(regr.coef_)
-
+"""
 
 class FolderWithImages(object):
     @property

@@ -6,11 +6,30 @@ import pickle
 import xarray
 from shapely.geometry import Polygon
 import richdem as rd
-
+import rasterio
 
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
+
+
+
+def add_2dlayer_toxarrayr(xarraydata, variable_name,fn = None, imageasarray = None):
+
+        dimsnames = list(xarraydata.dims.keys())
+        if fn is not None:
+            with rasterio.open(fn) as src:
+                xrimg = xarray.DataArray(src.read(1))
+        elif imageasarray is not None:
+            if len(imageasarray.shape) == 3:
+                imageasarray = imageasarray[:,:,0]
+
+            xrimg = xarray.DataArray(imageasarray)    
+
+        xrimg.name = variable_name
+        xrimg = xrimg.rename({'dim_0': dimsnames[0], 'dim_1': dimsnames[1]})
+
+        return xarray.merge([xarraydata, xrimg])
 
 
 def stack_as4dxarray(xarraylist, 
