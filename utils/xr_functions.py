@@ -11,7 +11,58 @@ import rasterio
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
+import os
 
+
+class CustomXarray(object):
+
+    def _export_aspickle(self, path, fn, verbose = False) -> None:
+
+        if not os.path.exists(path):
+            os.mkdir(path)
+        
+        outfn = os.path.join(path,fn+'.pickle')
+        with open(outfn, "wb") as f:
+            pickle.dump(self._filetoexport, f)
+
+        if verbose:
+            print('dat exported to {}'.format(outfn))
+
+        
+    def export_as_dict(self, path, fn, **kwargs):
+
+        self._filetoexport = self.to_custom_dict()
+        self._export_aspickle(path, fn,**kwargs)
+
+    def export_as_pickle(self, path, fn,**kwargs):
+
+        self._filetoexport = self.xrdata
+        self._export_aspickle(path, fn,**kwargs)
+
+
+    def to_custom_dict(self):
+
+        datadict = {
+            'variables':{},
+            'dims':{},
+            'attributes': {}}
+
+        self.variables = list(self.xrdata.keys())
+        
+        for feature in self.variables:
+            datadict['variables'][feature] = self.xrdata[feature].values
+
+        for dim in self.xrdata.dims.keys():
+            datadict['dims'][dim] = np.unique(self.xrdata[dim])
+        
+        for attr in self.xrdata.attrs.keys():
+            datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
+
+        return datadict
+
+    def __init__(self, xarraydata) -> None:
+        
+        self.xrdata = xarraydata
 
 
 def add_2dlayer_toxarrayr(xarraydata, variable_name,fn = None, imageasarray = None):
