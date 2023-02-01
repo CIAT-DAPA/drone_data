@@ -39,7 +39,9 @@ VEGETATION_INDEX = {# rgb bands
 
 
 def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None, ms_path=None, xyz_path=None,  
-                        featurename =None, output_path=None, export =True, rgb_asreference = True, verbose = False):
+                        featurename =None, output_path=None, export =True, 
+                        rgb_asreference = True, verbose = False,
+                        interpolate = True):
 
 
     roiorig = gpd.read_file(bbboxfile)
@@ -58,7 +60,7 @@ def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None, ms_path=Non
 
         uavdata.rgb_uavdata()
         uavdata.ms_uavdata()
-        uavdata.pointcloud()
+        uavdata.pointcloud(interpolate = interpolate)
         uavdata.stack_uav_data(bufferdef = None, rgb_asreference = rgb_asreference)
         datalist.append(uavdata.uav_sources['stacked'])
 
@@ -356,12 +358,13 @@ class IndividualUAVData(object):
         """
         read rgb data
         """
+        
         if self.rgb_bands is None:
             self.rgb_bands  = RGB_BANDS
-
+        
         rgb_data = _set_dronedata(
             self.rgb_path, 
-            bounds = [self._boundaries_buffer[0].__geo_interface__['features'][0]['geometry']], 
+            bounds = self._boundaries_buffer.copy(), 
             multiband_image=True, 
             bands = self.rgb_bands, **kwargs)
         self.uav_sources.update({'rgb':rgb_data})
@@ -376,7 +379,7 @@ class IndividualUAVData(object):
 
 
         ms_data = _set_dronedata(self.ms_input, 
-                    bounds = [self._boundaries_buffer[0].__geo_interface__['features'][0]['geometry']],
+                    bounds = self._boundaries_buffer.copy(),
                     multiband_image=False, bands = self.ms_bands, **kwargs)
 
         self.uav_sources.update({'ms':ms_data})
@@ -387,7 +390,7 @@ class IndividualUAVData(object):
         try:
             if os.path.exists(self.threed_input):
                 pcloud_data = CloudPoints(self.threed_input,
-                                gpdpolygon= self.spatial_boundaries, 
+                                gpdpolygon= self.spatial_boundaries.copy(), 
                                 verbose = False)
                 pcloud_data.to_xarray(interpolate = interpolate,**kwargs)
                 self._fnsuffix = self._fnsuffix+ 'pointcloud'
@@ -419,8 +422,8 @@ class IndividualUAVData(object):
         self.rgb_path = rgb_input
         self.ms_input = ms_input
         self.threed_input = threed_input
-        self.spatial_boundaries = spatial_boundaries
+        self.spatial_boundaries = spatial_boundaries.copy()
         ### read data with buffer
-        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2).reset_index()
+        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
 
 

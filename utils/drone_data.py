@@ -187,6 +187,10 @@ def check_boundarytype(boundsvariable):
             
         boundsvariable = [boundsvariable.reset_index(
             ).__geo_interface__['features'][0]['geometry']]
+    
+    elif type(boundsvariable) == gpd.geoseries.GeoSeries:
+        boundsvariable = [boundsvariable.reset_index(
+            )[0].__geo_interface__['features'][0]['geometry']]
         
     elif type(boundsvariable[0]) == dict:
         boundsvariable = boundsvariable
