@@ -179,6 +179,22 @@ def multiband_totiff(xrdata, filename, varnames=None):
 class UAVPlots():
     pass
 
+def check_boundarytype(boundsvariable):
+    
+    if type(boundsvariable ) == gpd.GeoDataFrame:
+        if boundsvariable.shape[0]> 1:
+            print('the data frame has more than 1 feature, only the first one will be taken')
+            
+        boundsvariable = [boundsvariable.reset_index(
+            ).__geo_interface__['features'][0]['geometry']]
+        
+    elif type(boundsvariable[0]) == dict:
+        boundsvariable = boundsvariable
+    else:
+        raise ValueError("the boundary object must be a GeoJSON-like dict object")
+    
+    return boundsvariable
+
 class DroneData:
     """
     Handles UAV images using xarray package.
@@ -224,10 +240,7 @@ class DroneData:
 
     def data_astable(self):
 
-        npdata2dclean, idsnan = data_processing.from_xarray_to_table(self.drone_data,
-                                                                     nodataval=self.drone_data.attrs['nodata'])
-
-        return [npdata2dclean, idsnan]
+        return self.drone_data.to_dataframe()
 
     def calculate_vi(self, vi='ndvi', expression=None, label=None):
         """
@@ -476,8 +489,8 @@ class DroneData:
                  inputpath,
                  bands=None,
                  multiband_image=False,
-                 roi = None,
-                 table=False,
+                 #roi = None,
+                 #table=False,
                  bounds = None):
         """
         Parameters:
@@ -519,11 +532,12 @@ class DroneData:
                     
                 self._files_path = [imgfiles for i in range(len(self._bands))]
 
-
+        self.bounds_asjson = check_boundarytype(bounds)
+        
         if len(self._files_path)>0:
-            self.drone_data = self.tif_toxarray(multiband_image, bounds=bounds)
+            self.drone_data = self.tif_toxarray(multiband_image, bounds=self.bounds_asjson)
         else:
-            raise ValueError('Non file path was found')
+            raise ValueError('Any file path was found in the input path')
             
         #if roi is not None:
         #    self.clip_using_gpd(roi, replace = True)
