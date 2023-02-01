@@ -237,7 +237,7 @@ def stack_multisource_data(roi,ms_data = None,
                      'blue':'blue_3d',
                      'green':'green_3d'})
 
-    if rgb_data is not None and ms_data is not None and pointclouddata is not None:
+    if rgb_data is not None and ms_data is not None:
         # shift displacement correction using rgb data
         shiftconv= find_shift_between2xarray(ms_data, rgb_data)
         msregistered = register_xarray(ms_data, shiftconv)
@@ -336,10 +336,14 @@ class IndividualUAVData(object):
 
     def stack_uav_data(self, bufferdef = None, rgb_asreference = True, resample_method = 'nearest'):
 
+        pointcloud = self.uav_sources['pointcloud'].twod_image if self.uav_sources['pointcloud'] is not None else None
+        ms = self.uav_sources['ms'].drone_data if self.uav_sources['ms'] is not None else None
+        rgb = self.uav_sources['rgb'].drone_data if self.uav_sources['rgb'] is not None else None
+
         img_stacked =  stack_multisource_data(self.spatial_boundaries,
-                                ms_data = self.uav_sources['ms'].drone_data, 
-                                rgb_data = self.uav_sources['rgb'].drone_data, 
-                                pointclouddata = self.uav_sources['pointcloud'].twod_image, 
+                                ms_data = ms, 
+                                rgb_data = rgb, 
+                                pointclouddata = pointcloud, 
                                 bufferdef = bufferdef, rgb_asreference = rgb_asreference,
                                 resamplemethod = resample_method)
 

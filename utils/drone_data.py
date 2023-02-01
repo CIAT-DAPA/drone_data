@@ -19,7 +19,7 @@ import pandas as pd
 import geopandas as gpd
 
 from . import gis_functions as gf
-from .xr_functions import split_xarray_data
+from .xr_functions import split_xarray_data, add_2dlayer_toxarrayr
 
 import re
 
@@ -229,14 +229,9 @@ class DroneData:
 
         return bands
 
-    def add_layer(self, fn, variable_name):
-        with rasterio.open(fn) as src:
-            xrimg = xarray.DataArray(src.read(1))
-
-        xrimg.name = variable_name
-        xrimg = xrimg.rename({'dim_0': 'y', 'dim_1': 'x'})
-
-        self.drone_data = xarray.merge([self.drone_data, xrimg])
+    def add_layer(self, variable_name,fn = None, imageasarray = None):
+        
+        self.drone_data = add_2dlayer_toxarrayr(self.drone_data, variable_name,fn = fn, imageasarray = imageasarray)
 
     def data_astable(self):
 
