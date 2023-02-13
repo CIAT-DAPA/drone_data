@@ -152,7 +152,12 @@ def cluster_3dxarray(xrdata, cluster_dict):
 
 
 
-def cluster_4dxarray(xarraydata, cl_dict, cluster_value = None, only_thesedates = None, clustervar_name = "cluster"):
+
+def cluster_4dxarray(xrdata, 
+                     cl_dict,
+                     cluster_value = None, 
+                     only_thesedates = None,
+                     name4d = 'date'):
     """
     function to mask a xarray multitemporal data using a pretrained cluster algorithm
 
@@ -173,31 +178,47 @@ def cluster_4dxarray(xarraydata, cl_dict, cluster_value = None, only_thesedates 
         
     """
     
-    xrtobemasked = xarraydata[cl_dict['variable_names']].copy()
+    xrtobemasked = xrdata.copy()
 
-    if only_thesedates is None:
-        dim1 = xrtobemasked.dims[list(xrtobemasked.dims)[0]]
-    else:
-        dim1 = only_thesedates
+    dim1size = range(xrtobemasked.dims[name4d])
 
-    imglist = []
-
-    for i in range(dim1):
-        dataimg = xrtobemasked.isel(date = i)
-        xrsingle = cluster_3dxarray(dataimg, cl_dict)
-
-        imglist.append(xrsingle)
+    imgfilteredperdate = []
+    maskslist = []
+    tpmasked = []
     
-    clxarray = xarray.concat(imglist, list(xarraydata.dims)[0])
-    clxarray = clxarray.rename(dict(zip(clxarray.dims,
-                                                list(xarraydata.dims.keys()))))
-
-    xrdata = xarray.merge([xrtobemasked, clxarray])
-
-    ## filtering
+    for i in dim1size:
+        xrsingle = xrtobemasked.isel({name4d : i}).copy()
+        
+        if only_thesedates is not None:
+            if i in only_thesedates:
+            
+                xrclusterlayer = cluster_3dxarray(
+                    xrsingle[cl_dict['variable_names']].copy(), cl_dict)
+                
+                xrsingle = xrsingle.where(
+                    xrclusterlayer.values != cluster_value,np.nan)
+                maskslist.append(xrclusterlayer)
+                tpmasked.append(i)
+            
+        else:
+            xrclusterlayer = cluster_3dxarray(
+                xrsingle[cl_dict['variable_names']].copy(), cl_dict)
+            
+            xrsingle = xrsingle.where(
+                xrclusterlayer.values != cluster_value,np.nan)
+            maskslist.append(xrclusterlayer)
+            tpmasked.append(i)
+              
+        imgfilteredperdate.append(xrsingle)
     
-    xrmasked = xarraydata.copy()
-    xrmasked = xrmasked.where(xrdata[clustervar_name] != cluster_value,np.nan)
-    xrmasked = xrmasked.where(xrmasked != 0,np.nan)
+    if len(imgfilteredperdate)>0:
+        #name4d = list(xrdata.dims.keys())[0]
 
-    return xrmasked, xrdata[clustervar_name]
+        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
+        mltxarray[name4d] = xrdata[name4d].values
+    
+    if len(maskslist)>0:
+        masksxr = xarray.concat(maskslist, dim=name4d)
+        masksxr[name4d] = xrdata[name4d].values[tpmasked]
+
+    return mltxarray, masksxr

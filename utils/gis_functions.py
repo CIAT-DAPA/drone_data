@@ -24,7 +24,7 @@ from skimage.registration import phase_cross_correlation
 from sklearn.impute import KNNImputer
 
 from .image_functions import phase_convolution,register_image_shift
-from .image_functions import radial_filter
+
 from .image_functions import cartimg_topolar_transform,border_distance_fromgrayimg
 from .image_functions import hist_3dimg
     
@@ -846,35 +846,6 @@ def resize_3dxarray(xrdata, new_size, bands = None,
     return xrdata
 
 
-def filter_3Dxarray_usingradial(xrdata,
-                                name4d = 'date', 
-                                onlythesedates = None, **kargs):
-    
-    varnames = list(xrdata.keys())
-    
-    imgfilteredperdate = []
-    for i in range(len(xrdata.date)):
-        indlayer = xrdata.isel(date = i).copy()
-        if onlythesedates is not None and i in onlythesedates:
-            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
-        elif onlythesedates is None:
-            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
-
-        imgfilteredperdate.append(indlayer)
-    
-    if len(imgfilteredperdate)>0:
-        #name4d = list(xrdata.dims.keys())[0]
-
-        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
-        mltxarray[name4d] = xrdata[name4d].values
-    else:
-        indlayer = xrdata.copy()
-        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-        mltxarray = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
-
-    return mltxarray
 
 
 # impute data 

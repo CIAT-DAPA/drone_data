@@ -20,15 +20,16 @@ from .drone_data import DroneData
 
 
 
+
 VEGETATION_INDEX = {# rgb bands
 'grvi': '(green_ms - red_ms)/(green_ms + red_ms)',
-'grvi_eq': '(green_eq - red_eq)/(green_eq + red_eq)',
-'grvi_rgb': '(green - red)/(green + red)',
+'grvi_rgb': '(green - red)/((green + red)+0.00001)',
+'mgrvi': '((green_ms*green_ms) - (red_ms*red_ms))/((green_ms*green_ms) + (red_ms*red_ms))',
+'mgrvi_rgb': '((green*green) - (red*red))/(((green*green) + (red*red))+0.00001)',
 'rgbvi': '((green_ms*green_ms) - (blue_ms*red_ms))/ ((green_ms*green_ms) + (blue_ms*red_ms))',
-'rgbvi_eq': '((green_eq*green_eq) - (blue_eq*red_eq))/ ((green_eq*green_eq) + (blue_eq*red_eq))',
-'rgbvi_rgb': '((green*green) - (blue*red))/ ((green*green) + (blue*red))',
+'rgbvi_rgb': '((green*green) - (blue*red))/ (((green*green) + (blue*red))+0.00001)',
  # nir indexes
-'ndvi': '(nir - red_ms)/(nir + red_ms)',
+ 'ndvi': '(nir - red_ms)/(nir + red_ms)',
 'ndre': '(nir - edge)/(nir + edge)',
 'gndvi': '(nir - green_ms)/(nir + green_ms)',
 'regnvi': '(edge - green_ms)/(edge + green_ms)',
@@ -37,11 +38,12 @@ VEGETATION_INDEX = {# rgb bands
 'savi':  '((nir - red_ms) / (nir + red_ms + 0.5)) * (1.5)'}
 
 
-
-def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None, ms_path=None, xyz_path=None,  
+def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None,
+                                      ms_path=None, xyz_path=None,  
                         featurename =None, output_path=None, export =True, 
                         rgb_asreference = True, verbose = False,
-                        interpolate = True):
+                        interpolate = True,
+                        resizeinter_method = 'nearest'):
 
 
     roiorig = gpd.read_file(bbboxfile)
@@ -64,7 +66,9 @@ def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None, ms_path=Non
         uavdata.stack_uav_data(bufferdef = None, rgb_asreference = rgb_asreference)
         datalist.append(uavdata.uav_sources['stacked'])
 
-    alldata = stack_as4dxarray(datalist, datesnames)
+    alldata = stack_as4dxarray(datalist,axis_name = 'date', 
+            valuesaxis_names=datesnames, 
+            resizeinter_method = resizeinter_method)
 
     if export:
         if not os.path.exists(output_path):
@@ -97,6 +101,7 @@ def single_vi_bsl_impt_preprocessing(
                         bsl_method = 'max_probability',
                         leaf_angle = True,
                         imputation = True,
+                        bandstofill = None,
                         equalization = True,
                         nabandmaskname='red',
                         vilist = None,
@@ -129,12 +134,15 @@ def single_vi_bsl_impt_preprocessing(
 
 
     if imputation:
+        if bandstofill is None:
+            bandstofill = list(xrdatac.keys())
         if len(list(xrdatac.dims.keys())) >=3:
             xrdatac = impute_4dxarray(xrdatac, 
-            bandstofill=[height_name],
+            bandstofill=bandstofill,
             nabandmaskname=nabandmaskname,n_neighbors=5)
         else:
-            xrdatac = xarray_imputation(xrdatac, bands=[height_name],nabandmaskname=nabandmaskname,n_neighbors=5)
+            xrdatac = xarray_imputation(xrdatac, bands=[height_name],
+                                        nabandmaskname=nabandmaskname,n_neighbors=5)
             
         suffix +='imputation_' 
 

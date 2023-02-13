@@ -621,3 +621,36 @@ def singleline_to2d_slice(zvalues, fill_Values = None, scalez = 1,
         npzeros = np.array(Image.fromarray(npzeros).transpose(Image.FLIP_LEFT_RIGHT))
     
     return npzeros
+
+
+# create filters by contour
+
+def remove_smallpixels(img,imgrefpos = 0,thresh = 0.7):
+    channelimg = img[imgrefpos].copy().astype(np.uint8)
+    channelimg[channelimg<0] = 0
+    channelimg[channelimg>0] = 255
+    ## get mask
+    smallpixelsmask = calculate_mask_contourarea(channelimg, threhold = thresh)
+    
+    newimgs = np.zeros(img.shape, dtype=img.dtype)
+    
+    for i in range(img.shape[0]):
+        newimgs[i] = cv2.bitwise_and(img[i], img[i], mask=smallpixelsmask)
+    
+    return newimgs
+
+def calculate_mask_contourarea(image,threhold = 0.7):
+    ret, thresh = cv2.threshold(image, 127, 255, 0, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # create an empty mask
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    allarea = mask.shape[0] * mask.shape[0]
+    cntmaxarea = np.max([cv2.contourArea(cnt) for cnt in contours])
+
+    for i, cnt in enumerate(contours):
+        #if hierarchy[0][i][2] != -1:
+        if (cv2.contourArea(cnt)/allarea)/(cntmaxarea/allarea) >threhold:
+            cv2.drawContours(mask, [cnt], 0, (255), -1)
+        
+    return mask
+    

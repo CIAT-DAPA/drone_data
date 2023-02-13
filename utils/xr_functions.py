@@ -12,7 +12,8 @@ from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
 import os
-
+from .image_functions import radial_filter, remove_smallpixels
+from .gis_functions import list_tif_2xarray
 
 class CustomXarray(object):
 
@@ -458,3 +459,82 @@ def shift_andregister_xarray(xrimage, xrreference, boundary = None):
     msregistered = resample_xarray(msregistered, xrreference)
 
     return msregistered, xrreference
+
+
+
+### filter noise
+
+
+def filter_3Dxarray_usingradial(xrdata,
+                                name4d = 'date', 
+                                onlythesedates = None, **kargs):
+    
+    varnames = list(xrdata.keys())
+    
+    imgfilteredperdate = []
+    for i in range(len(xrdata.date)):
+        indlayer = xrdata.isel(date = i).copy()
+        if onlythesedates is not None and i in onlythesedates:
+            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+        elif onlythesedates is None:
+            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+
+        imgfilteredperdate.append(indlayer)
+    
+    if len(imgfilteredperdate)>0:
+        #name4d = list(xrdata.dims.keys())[0]
+
+        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
+        mltxarray[name4d] = xrdata[name4d].values
+    else:
+        indlayer = xrdata.copy()
+        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+        mltxarray = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+
+    return mltxarray
+
+
+def filter_3Dxarray_contourarea(xrdata,
+                                name4d = 'date', 
+                                onlythesedates = None, **kargs):
+    
+    varnames = list(xrdata.keys())
+    
+    imgfilteredperdate = []
+    for i in range(len(xrdata[name4d])):
+        indlayer = xrdata.isel(date = i).to_array().values.copy()
+        if onlythesedates is not None and i in onlythesedates:
+            imgmasked =remove_smallpixels(indlayer, **kargs)
+            indlayer = list_tif_2xarray(imgmasked, 
+                 xrdata.attrs['transform'],
+                 crs=xrdata.attrs['crs'],
+                 bands_names=list(varnames),
+                 nodata=np.nan)
+            
+        elif onlythesedates is None:
+            imgmasked =remove_smallpixels(indlayer, **kargs)
+            indlayer = list_tif_2xarray(imgmasked, 
+                 xrdata.attrs['transform'],
+                 crs=xrdata.attrs['crs'],
+                 bands_names=list(varnames),
+                 nodata=np.nan)
+
+        imgfilteredperdate.append(indlayer)
+    
+    if len(imgfilteredperdate)>0:
+        #name4d = list(xrdata.dims.keys())[0]
+
+        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
+        mltxarray[name4d] = xrdata[name4d].values
+    else:
+        indlayer = xrdata.to_array().values.copy()
+        imgmasked =remove_smallpixels(indlayer **kargs)
+        mltxarray = list_tif_2xarray(imgmasked, 
+                 xrdata.attrs['transform'],
+                 crs=xrdata.attrs['crs'],
+                 bands_names=list(varnames),
+                 nodata=np.nan)
+
+    return mltxarray

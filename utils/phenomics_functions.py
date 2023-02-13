@@ -7,7 +7,7 @@ import xarray
 import math
 from skimage.morphology import convex_hull_image
 
-from .gis_functions import filter_3Dxarray_usingradial
+from .xr_functions import filter_3Dxarray_usingradial, filter_3Dxarray_contourarea
 from .gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
 from .image_functions import getcenter_from_hull
 
@@ -521,7 +521,7 @@ class Phenomics:
                  dates_oi = None,
                  earlystages_filter = False,
                  earlystages_dates = None,
-                 radial_filter = True,
+                 filter_method = None,
                  rf_onlythesedates = None,
                  summaryquantiles = [0.25,0.5,0.75],
                  days_earlystage = 15):
@@ -553,12 +553,15 @@ class Phenomics:
         self.xrdata = xrdata.isel({name4d:dates_oi}).copy()
 
         # apply filter to remove small objects that don't belong to the main body
-        if radial_filter:
-            self.xrdata = filter_3Dxarray_usingradial(self.xrdata, 
-                                                      onlythesedates = rf_onlythesedates,
-                                                      anglestep = 1,
-                                                      nathreshhold=4)
-
+        if filter_method is not None:
+            if filter_method == 'radial':
+                self.xrdata = filter_3Dxarray_usingradial(self.xrdata, 
+                                                        onlythesedates = rf_onlythesedates,
+                                                        anglestep = 1,
+                                                        nathreshhold=4)
+            if filter_method == 'contourarea':
+                self.xrdata = filter_3Dxarray_contourarea(self.xrdata)
+        
         self.varnames = list(xrdata.keys())
     
         
