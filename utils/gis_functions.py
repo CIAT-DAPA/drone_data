@@ -542,9 +542,12 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
     xarray
 
     """
+    if channel is None:
+        channel = list(xrdata.keys())[0]
+        
     if len(list(xrdata.dims.keys())) >=3:
         vardatename = [i for i in list(xrdata.dims.keys()) 
-                       if type(xrdata[i].values[0]) == np.datetime64][0]
+                        if type(xrdata[i].values[0]) == np.datetime64][0]
         initimageg = xrdata.isel({vardatename:refimg}).copy()
         ydimpos = 1
         xdimpos = 2
@@ -553,28 +556,38 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
         ydimpos = 0
         xdimpos = 1
 
-    _,center = centerto_edgedistances_fromxarray(initimageg,  
-                                                refband = channel,
-                                                wrapper = wrapper)
+    #_,center = centerto_edgedistances_fromxarray(initimageg,  
+    #                                            refband = channel,
+    #                                            wrapper = wrapper)
         
-    xp,yp = center[1],center[0]
-    pr = red_perc/100
+    if wrapper == 'hull':
+        center = getcenter_from_hull(initimageg[channel].values)
+
     y = xrdata[channel].values.shape[ydimpos]
     x = xrdata[channel].values.shape[xdimpos]
 
-    red0 = int(xrdata[channel].values.shape[ydimpos]*pr/2)
-    red1 = int(xrdata[channel].values.shape[xdimpos]*pr/2)
+    print(initimageg[channel].copy().values.shape)
+    xp,yp = (center[1]),(center[0])
+    print('x',xp, center[1], x)
+    print('y', yp, center[0], y)
+    pr = red_perc/100
 
-    lc = int((xp-red0) if (xp-red0) > 0 else 0)
-    rc = int((xp+red0) if (x-(xp+red0)) > 0 else x)
-    tc = int((yp-red1) if (yp-red1) > 0 else 0)
-    bc = int((yp+red1) if (y-(yp+red1)) > 0 else y)
-    
+    print('y', y, 'x',x)
+
+    redy = int(y*pr/2)
+    redx = int(x*pr/2)
+
+
+    lc = int((xp-redx) if (xp-redx) > 0 else 0)
+    rc = int((xp+redx) if (x-(xp+redx)) > 0 else x)
+    bc = int((yp-redy) if (yp-redy) > 0 else 0)
+    tc = int((yp+redy) if (y-(yp+redy)) > 0 else y)
+        
     npmask = np.zeros(xrdata[channel].values.shape)
     if len(list(xrdata.dims.keys())) >=3:
-        npmask[:,tc:bc,lc:rc] = 1
+        npmask[:,bc:tc,lc:rc] = 1
     else:
-        npmask[tc:bc,lc:rc] = 1
+        npmask[bc:tc,lc:rc] = 1
 
     xrfiltered = xrdata.copy() * npmask
 
@@ -582,7 +595,9 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
         ncols_img, nrows_img = xrfiltered.attrs['width'], xrfiltered.attrs['height']
         big_window = windows.Window(col_off=0, row_off=0, width=ncols_img, height=nrows_img)
     
-        window = windows.Window(col_off=lc, row_off=tc, width=abs(lc - rc), height=abs(tc-bc)).intersection(big_window)
+        window = windows.Window(col_off=lc, row_off=bc, width=abs(lc - rc),
+                        height=abs(tc-bc)).intersection(big_window)
+        
         transform = windows.transform(window, xrfiltered.attrs['transform'])
         xrfiltered = crop_using_windowslice(xrfiltered.copy(), window, transform)
 
@@ -1011,14 +1026,17 @@ def centerto_edgedistances_fromxarray(xrdata, refband = None, wrapper = 'hull'):
     #distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
     refimg[refimg == 0.0] = np.nan
     refimg[np.logical_not(np.isnan(refimg))] = 255
-
-    if wrapper == 'circle':
-        refimg[np.isnan(refimg)] = 0
-        refimg = refimg.astype(np.uint8)
-        c,r = border_distance_fromgrayimg(refimg)
-        
-    elif wrapper == 'hull':
-        c = getcenter_from_hull(refimg, buffernaprc = 15)
+    if np.isnan(refimg).sum() / (refimg.shape[0]*refimg.shape[1]) < .9:
+        if wrapper == 'circle':
+            refimg[np.isnan(refimg)] = 0
+            refimg = refimg.astype(np.uint8)
+            c,r = border_distance_fromgrayimg(refimg)
+            
+        elif wrapper == 'hull':
+            c = getcenter_from_hull(refimg, buffernaprc = 15)
+            r = None
+    else:
+        c = [refimg.shape[1]//2,refimg.shape[0]//2]
         r = None
     ## take 
     #borderdistances = []

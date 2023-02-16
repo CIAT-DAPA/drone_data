@@ -261,7 +261,10 @@ class Phenomics:
     def convex_hull_plot(self, refband = 'red', 
                          scalefactor = 100, figsize = (20,12),
                           saveplot = False,
-                          outputpath = None):
+                          outputpath = None, alphahull = 0.2,
+                          size = 8,
+                          ccenter = 'red',
+                          addcenter = True):
 
         name4d = list(self.xrdata.dims.keys())[0]
 
@@ -278,14 +281,19 @@ class Phenomics:
             initimageg[np.isnan(initimageg)] = 0
             chull = convex_hull_image(initimageg, 
                                       offset_coordinates=False)
+            
+            c = getcenter_from_hull(initimageg)
+            
             threebanddata = []
             for i in ['red', 'green','blue']:
                 threebanddata.append(self.xrdata.isel(date=doi).copy()[i].data)
             threebanddata = np.dstack(tuple(threebanddata))/255
 
             ax[doi].imshow(threebanddata)
+            if addcenter:
+                ax[doi].scatter( c[1], c[0], c = [ccenter], s = [size])
 
-            ax[doi].imshow(chull, alpha = 0.15)
+            ax[doi].imshow(chull, alpha = alphahull)
             area = np.nansum(chull)*pixelsize*pixelsize
             ax[doi].invert_xaxis()
             ax[doi].set_axis_off()

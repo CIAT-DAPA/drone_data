@@ -57,12 +57,20 @@ def getcenter_from_hull(npgrayimage, buffernaprc = 15):
         nonantmpimg = change_bordersvaluesasna(nonantmpimg, bufferna=buffernaprc)
 
     nonantmpimg[np.isnan(nonantmpimg)] = 0
+    mask0 = nonantmpimg == 0
+    if mask0.sum() / (mask0.shape[0]*mask0.shape[1]) < .9:
+            
+        coords = np.transpose(np.nonzero(nonantmpimg))
+        hull = ConvexHull(coords)
 
-    coords = np.transpose(np.nonzero(nonantmpimg))
-    hull = ConvexHull(coords)
+        cx = np.mean(hull.points[hull.vertices,0])
+        cy = np.mean(hull.points[hull.vertices,1])
+    
+    else:
+        cx = mask0.shape[1]//2
+        cy = mask0.shape[0]//2
 
-    cx = np.mean(hull.points[hull.vertices,0])
-    cy = np.mean(hull.points[hull.vertices,1])
+        
 
     return int(cx),int(cy)
 
