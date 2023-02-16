@@ -258,7 +258,8 @@ class Phenomics:
         
         return self._phenomic_summary['convex_hull']
 
-    def convex_hull_plot(self, refband = 'red', scalefactor = 100, figsize = (20,12),
+    def convex_hull_plot(self, refband = 'red', 
+                         scalefactor = 100, figsize = (20,12),
                           saveplot = False,
                           outputpath = None):
 
@@ -272,6 +273,7 @@ class Phenomics:
         pixelsize = self.xrdata.attrs['transform'][0]*scalefactor
         for doi in range(len(self.xrdata.date.values)):
             initimageg = xrdata[doi]
+            initimageg[initimageg ==0 ] = np.nan
             initimageg[np.logical_not(np.isnan(initimageg))] = 1
             initimageg[np.isnan(initimageg)] = 0
             chull = convex_hull_image(initimageg, 

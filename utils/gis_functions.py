@@ -25,7 +25,7 @@ from sklearn.impute import KNNImputer
 
 from .image_functions import phase_convolution,register_image_shift
 
-from .image_functions import cartimg_topolar_transform,border_distance_fromgrayimg
+from .image_functions import getcenter_from_hull,border_distance_fromgrayimg
 from .image_functions import hist_3dimg
     
 
@@ -521,15 +521,17 @@ def best_polygon(overlaylist):
     return from_xyxy_2polygon(x1, y1, x2, y2)
 
 
-def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0, clip_xarray = False):
+def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0, 
+                      clip_xarray = False,
+                      wrapper = 'hull'):
     """
     Mask a xarray data using percentage
 
     Parameters:
     ---------
 
-    heightvarname: str, optional
-        Height variable name
+    channel: str, optional
+        variable name that will be used as reference
     red_perc: int
         the value that will indicate the final image reduction, 100 will indicate that there won't apply any reduction, 0 will rid off the whole image
     clip_xarray: boolean, optional
@@ -541,7 +543,8 @@ def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0, cli
 
     """
     if len(list(xrdata.dims.keys())) >=3:
-        vardatename = [i for i in list(xrdata.dims.keys()) if type(xrdata[i].values[0]) == np.datetime64][0]
+        vardatename = [i for i in list(xrdata.dims.keys()) 
+                       if type(xrdata[i].values[0]) == np.datetime64][0]
         initimageg = xrdata.isel({vardatename:refimg}).copy()
         ydimpos = 1
         xdimpos = 2
@@ -551,21 +554,23 @@ def get_filteredimage(xrdata, heightvarname = 'z',red_perc = 70, refimg = 0, cli
         xdimpos = 1
 
     _,center = centerto_edgedistances_fromxarray(initimageg,  
-                                                refband = heightvarname)
-    xp,yp = center
+                                                refband = channel,
+                                                wrapper = wrapper)
+        
+    xp,yp = center[1],center[0]
     pr = red_perc/100
-    y = xrdata[heightvarname].values.shape[ydimpos]
-    x = xrdata[heightvarname].values.shape[xdimpos]
+    y = xrdata[channel].values.shape[ydimpos]
+    x = xrdata[channel].values.shape[xdimpos]
 
-    red0 = int(xrdata[heightvarname].values.shape[ydimpos]*pr/2)
-    red1 = int(xrdata[heightvarname].values.shape[xdimpos]*pr/2)
+    red0 = int(xrdata[channel].values.shape[ydimpos]*pr/2)
+    red1 = int(xrdata[channel].values.shape[xdimpos]*pr/2)
 
     lc = int((xp-red0) if (xp-red0) > 0 else 0)
     rc = int((xp+red0) if (x-(xp+red0)) > 0 else x)
     tc = int((yp-red1) if (yp-red1) > 0 else 0)
     bc = int((yp+red1) if (y-(yp+red1)) > 0 else y)
     
-    npmask = np.zeros(xrdata[heightvarname].values.shape)
+    npmask = np.zeros(xrdata[channel].values.shape)
     if len(list(xrdata.dims.keys())) >=3:
         npmask[:,tc:bc,lc:rc] = 1
     else:
@@ -997,17 +1002,24 @@ def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'k
     return xrdata
 
 
-def centerto_edgedistances_fromxarray(xrdata, anglestep = 2, nathreshhold = 3, confidence = 0.95, refband = None):
+def centerto_edgedistances_fromxarray(xrdata, refband = None, wrapper = 'hull'):
     bandnames = list(xrdata.keys())
     if refband is None:
         refband = bandnames[0]
     ## get from the center to the leaf tip
     refimg = xrdata[refband].copy().values
     #distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
+    refimg[refimg == 0.0] = np.nan
     refimg[np.logical_not(np.isnan(refimg))] = 255
-    refimg[np.isnan(refimg)] = 0
-    refimg = refimg.astype(np.uint8)
-    c,r = border_distance_fromgrayimg(refimg)
+
+    if wrapper == 'circle':
+        refimg[np.isnan(refimg)] = 0
+        refimg = refimg.astype(np.uint8)
+        c,r = border_distance_fromgrayimg(refimg)
+        
+    elif wrapper == 'hull':
+        c = getcenter_from_hull(refimg, buffernaprc = 15)
+        r = None
     ## take 
     #borderdistances = []
     #for i in range(len(distvector)):
