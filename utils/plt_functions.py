@@ -236,7 +236,8 @@ def plot_multichanels(data, num_rows = 2,
                      fontsize=12, 
                      legfontsize = 15,
                      legtickssize = 15,
-                     colorbar = True, vmin = None, vmax = None):
+                     colorbar = True, vmin = None, vmax = None,
+                     newlegendticks = None):
     """
     create a figure showing one channel or multiple channels
     ----------
@@ -313,7 +314,13 @@ def plot_multichanels(data, num_rows = 2,
         cb.ax.tick_params(labelsize=legtickssize)
         if label_name is not None:
             cb.set_label(label=label_name, fontdict={'size' : legfontsize})
+        if newlegendticks:
+            cb.ax.get_yaxis().set_ticks([])
+            for j, lab in enumerate(newlegendticks):
+                cb.ax.text(vmax, (7.2 * j + 2) / (vmax+3), lab,
+                           ha='left', va='center',fontsize=legtickssize)
 
+            
     return fig,ax
 
 
@@ -454,19 +461,32 @@ def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None,
     fig.colorbar(datatoplot, cax=cbar_ax)
 
 
-def adding_phfigure(altref, indcolors, xaxisref, yphreference, var, fontsize, vmin, vmax, vmaxl, ax = None):
-    ax.scatter(altref.iloc[:,1],
+def adding_phfigure(altref, indcolors, xaxisref, yphreference, var, fontsize, vmin, vmax, vmaxl, 
+                    ax = None, yfontize = 18,
+                    hmin = None, hmax = None):
+    xvalues = altref.iloc[:,0]
+    xvalues = xvalues - hmin
+    ax.scatter(xvalues*100,
                                 altref.iloc[:,2],
-                                c = indcolors)              
+                                c = indcolors)
+    
+    xaxisref = np.nanquantile(xvalues*100,0.05)
+               
     #ax[j,i].axhline(y = yphreference, color = 'black', linestyle = '-')
     ax.plot((xaxisref, xaxisref), (yphreference,yphreference), color = 'black', linestyle = '-')
-    ax.plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-')
+    ax.plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-', linewidth=10)
     ax.axhline(y = 0, color = 'black', linestyle = '-')
     ax.set_title(var, fontsize=fontsize, fontweight='bold')
-    ax.set_xticks([])
+    #ax.set_xticks([])
+    ax.yaxis.set_ticks(np.arange(0, (vmax-(vmax%10))+20, 10))
+    ax.grid(color = 'gray', linestyle = '--', linewidth = 1,axis = 'y')
+    ax.yaxis.set_tick_params(labelsize=yfontize)
+    ax.xaxis.set_tick_params(labelsize=yfontize-1)
     ax.set_ylim(vmin, vmax+vmaxl)
+    ax.set_xlim((hmin-hmin)*100,(hmax-hmin)*100)
 
     return ax
+
 
 def plot_heights(xrdata, num_rows = 2, 
                      num_columns = 2, 
@@ -475,11 +495,13 @@ def plot_heights(xrdata, num_rows = 2,
                      bsl = None,
                      chanels_names = None, 
                      label_name = 'Height (cm)', 
-                     fontsize=12,
+                     fontsize=18,
                      scalez = 100,
                      phquantile = 0.5, 
                      fig = None,
                      ax = None,
+                     vmin = None,
+                     vmax = None,
                      reduction_perc = None):
     """
     create a figure showing a 2d profile from a 3d image reconstruction
@@ -519,6 +541,7 @@ def plot_heights(xrdata, num_rows = 2,
     count = 0
     vars = chanels_names
     xrdatac = xrdata.copy()
+    #xrdatac = xrdatac[height_name].where(xrdatac[height_name] > 0, np.nan)
     if bsl is not None:
         xrdatac[height_name] = (xrdatac[height_name] - bsl)
         xrdatac[height_name] = xrdatac[height_name].where(xrdatac[height_name] > 0, np.nan)
@@ -529,10 +552,13 @@ def plot_heights(xrdata, num_rows = 2,
     else:
         data = xrdatac[height_name].values
 
-    vmin = np.nanmin(data)
-    vmax = np.nanmax(data)
+    if vmin is None:
+        vmin = np.nanmin(data)
+    if vmax is None:
+        vmax = np.nanmax(data)
     vmaxl = 1*(np.nanstd(data))
-
+    hmin, hmax = np.min(xrdatac.x.values),np.max(xrdatac.x.values)
+    #print(np.unique(altref.iloc[:,1]/100))
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
@@ -542,14 +568,24 @@ def plot_heights(xrdata, num_rows = 2,
                 altref.iloc[:,3].values, 
                 altref.iloc[:,4].values,
                 altref.iloc[:,5].values)]
-                xaxisref = np.nanquantile(altref.iloc[:,1],0.1)
-                yphreference = np.nanquantile(altref[height_name].values[altref[height_name].values>0],phquantile )
-                    
+                xaxisref = np.nanquantile(altref.iloc[:,0],0.4)
+                
+                
+                yphreference = np.nanquantile(altref[height_name].values[altref[height_name].values>0],
+                                              phquantile )
+                
+                
                 if num_rows>1:
-                    ax[j,i] = adding_phfigure(altref, indcolors, xaxisref, yphreference, vars[count], fontsize, vmin, vmax, vmaxl, ax = ax[j,i])
+                    ax[j,i] = adding_phfigure(altref, indcolors, xaxisref, 
+                                              yphreference, vars[count], 
+                                              fontsize, vmin, vmax, vmaxl, ax = ax[j,i],
+                                              hmin = hmin, hmax = hmax)
                     
                 else:
-                    ax[i] = adding_phfigure(altref, indcolors, xaxisref, yphreference, vars[count], fontsize, vmin, vmax, vmaxl, ax = ax[i])
+                    ax[i] = adding_phfigure(altref, indcolors, xaxisref, 
+                                            yphreference, vars[count], 
+                                            fontsize, vmin, vmax, vmaxl, ax = ax[i],
+                                            hmin = hmin, hmax = hmax)
 
                 count +=1
             else:
@@ -565,7 +601,9 @@ def plot_heights(xrdata, num_rows = 2,
 
     # Adding the x-axis and y-axis labels for the bigger plot
     #plt.xlabel('Common X-Axis', fontsize=15, fontweight='bold')
-    plt.ylabel(label_name, fontsize=int(fontsize*2), fontweight='bold')
+    plt.ylabel(label_name + '\n', fontsize=int(fontsize*1.5), fontweight='bold')
+    plt.xlabel('Longitude (cm)', fontsize=int(fontsize*1.5), fontweight='bold')
+
 
     #plt.show()
     #cbar = plt.colorbar(data.ravel())

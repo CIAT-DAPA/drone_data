@@ -158,6 +158,10 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_pro
 
         ydata = df.iloc[:,1].values.copy()
         zdata = df.iloc[:,2].values.copy()
+        zeromask = np.logical_not(zdata==0)
+        ydata = ydata[zeromask]
+        zdata = zdata[zeromask]
+        
         ycentermask1 = ydata>(np.mean(ydata)+(stdtimes*np.std(ydata)))
         ycentermask2 = ydata<(np.mean(ydata)-(stdtimes*np.std(ydata)))
         datam = np.sort(zdata[ycentermask1])
