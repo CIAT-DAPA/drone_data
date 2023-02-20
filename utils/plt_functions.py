@@ -58,7 +58,8 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinv
 
 
 
-def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z'):
+def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z', 
+                        rgb_bandnames = ['red','green', 'blue']):
     """
     this function creates a 3D interactive function from a 2d image using xarra data
 
@@ -87,9 +88,10 @@ def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z'):
         y=ycoords[nonvaluemask], 
         z=zcoords.ravel()[nonvaluemask],
         mode='markers',
-        marker=dict(color=['rgb({},{},{})'.format(r,g,b) for r,g,b in zip(plotdf.red.values[nonvaluemask], 
-                                                                          plotdf.green.values[nonvaluemask], 
-                                                                          plotdf.blue.values[nonvaluemask])]))
+        marker=dict(color=['rgb({},{},{})'.format(r,g,b) for r,g,b in
+                           zip(plotdf[rgb_bandnames[0]].values[nonvaluemask], 
+                               plotdf[rgb_bandnames[0]].values[nonvaluemask], 
+                               plotdf[rgb_bandnames[0]].values[nonvaluemask])]))
 
     layout = go.Layout(margin=dict(l=0,
                                r=0,
