@@ -3,8 +3,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 
-from .gis_functions import get_filteredimage
-
 import math
 
 def scaleminmax(values):
@@ -532,7 +530,9 @@ def plot_heights(xrdata, num_rows = 2,
 
     Returns
     -------
-    """    
+    """ 
+    from .gis_functions import get_filteredimage
+
     if chanels_names is None:
         chanels_names = [np.datetime_as_string(i, unit='D') for i in xrdata.date.values ]
 
