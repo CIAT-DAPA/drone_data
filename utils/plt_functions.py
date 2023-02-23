@@ -212,12 +212,14 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
     """    
 
     xrdatac = xrdata.copy()
+    if chanels_names is not None:
+        xrdatac = xrdatac[chanels_names]
+        
     if minmaxscale:
         xrdatac = minmax_xarray(xrdatac).to_array().values
     else:
         xrdatac = xrdatac.to_array().values
-    if chanels_names is not None:
-        xrdatac = xrdatac[chanels_names]
+
 
     return plot_multichanels(xrdatac,num_rows = num_rows, 
                       num_columns = num_columns, 
@@ -355,12 +357,95 @@ def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertax
     plt.show()
 
 
+def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None, 
+                          figsize = (20,20), scale = 255.,
+                          datelabes = None,
+                          #bands =['red','green','blue'],
+                          depthpos = 0,
+                          savedir = None,
+                          fontsize = 15,
+                          titlelabel = True,
+                          invertaxis = False):
+    """
+    create a figure showing one ataked multiband figure
+    ----------
+    Params:
+
+    arraydata : arra data (D x C x H x W)
+    nrows : int
+        set number of rows
+    ncols : int, optional
+        set number of rows
+    figsize : tuple, optional
+        A tuple (width, height) of the figure in inches. 
+    bands: list, optional
+        A list that contains which three bands will represent the RGB channels
+    fontsize : int, optional
+        a number for setting legend title size.
+    savedir: str, optional
+        a directory path where will be used to save the image
+    titlelabel: boolean, optional
+        add title to each panel
+    Returns
+    -------
+    fig: a matplotlib firgure
+    """    
+    if ncols is None:
+        ncols = math.ceil(arraydata.shape[depthpos] / nrows)
+    
+    fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
+    cont = 0
+    mtdata = arraydata.copy()
+    
+    if depthpos == 1:
+        mtdata = mtdata.swapaxes(0,1)
+        
+    if datelabes is None:
+        datelabes = ['']*arraydata.shape[0]
+        
+        
+    for xi in range(nrows):
+        for yi in range(ncols):
+            if cont < mtdata.shape[0]:
+                dataimg = mtdata[cont].copy()
+                if scale == "minmax":
+                    datatoplot = np.dstack([(dataimg[i].data - np.nanmin(dataimg[i].data)
+                    )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in range(dataimg.shape[0])])
+                else:
+                    datatoplot = np.dstack([dataimg[i].data for i in range(dataimg.shape[0])])/scale
+                if nrows > 1:
+                    axs[xi,yi].imshow(datatoplot)
+                    axs[xi,yi].set_axis_off()
+                    if titlelabel:
+                        axs[xi,yi].set_title(datelabes[cont], fontsize=fontsize)
+                    if invertaxis:
+                        axs[xi,yi].invert_xaxis()
+
+                    cont+=1
+                else:
+                    axs[yi].imshow(datatoplot)
+                    axs[yi].set_axis_off()
+                    if titlelabel:
+                        axs[yi].set_title(datelabes[cont], fontsize=fontsize)
+                    if invertaxis:
+                        axs[yi].invert_xaxis()
+                    cont = yi+1
+                
+            else:
+                axs[xi,yi].axis('off')
+
+    if savedir is not None:
+        fig.savefig(savedir)
+    
+    return fig
+
 def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None, 
                           figsize = (20,20), scale = 255., 
                           bands =['red','green','blue'],
                           savedir = None,
                           fontsize = 15,
-                          titlelabel = True):
+                          titlelabel = True,
+                          name4d = 'date'):
     """
     create a figure showing one ataked multiband figure
     ----------
@@ -388,42 +473,27 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
     if ncols is None:
         ncols = math.ceil(len(xarraydata.date) / nrows)
     
-    fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
-    cont = 0
+    #fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
+    #cont = 0
     
-
-    for xi in range(nrows):
-        for yi in range(ncols):
-            if cont < len(xarraydata.date):
-                dataimg = xarraydata.isel(date=cont).copy()
-                if scale == "minmax":
-                    datatoplot = np.dstack([(dataimg[i].data - np.nanmin(dataimg[i].data)
-                    )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in bands])
-                else:
-                    datatoplot = np.dstack([dataimg[i].data for i in bands])/scale
-                if nrows > 1:
-                    axs[xi,yi].imshow(datatoplot)
-                    axs[xi,yi].set_axis_off()
-                    if titlelabel:
-                        axs[xi,yi].set_title(np.datetime_as_string(
-                            xarraydata.date.values[cont], unit='D'), fontsize=fontsize)
-                    axs[xi,yi].invert_xaxis()
-
-                    cont+=1
-                else:
-                    axs[yi].imshow(datatoplot)
-                    axs[yi].set_axis_off()
-                    if titlelabel:
-                        axs[yi].set_title(np.datetime_as_string(
-                            xarraydata.date.values[yi], unit='D'), fontsize=fontsize)
-                    axs[yi].invert_xaxis()
-                    cont = yi+1
-                
-            else:
-                axs[xi,yi].axis('off')
-
-    if savedir is not None:
-        fig.savefig(savedir)
+    if bands is not None:
+        xrdatac = xarraydata[bands].to_array().values.copy()
+    else:
+        xrdatac = xarraydata.to_array().values.copy()
+    xarraydims = list(xrdatac.dims.keys())
+    depthpos = [i for i in range(len(xarraydims)) if xarraydims[i] ==name4d]
+    datelabesl = [np.datetime_as_string(i, unit='D') for i in xrdatac[name4d].values] 
+    
+    fig = plot_multitemporal_rgbarray(xrdatac, ncols = ncols, nrows=nrows,
+                          figsize = figsize, scale = scale,
+                          datelabes = datelabesl,
+                          #bands =['red','green','blue'],
+                          depthpos = depthpos,
+                          savedir = savedir,
+                          fontsize = fontsize,
+                          titlelabel = titlelabel,
+                          invertaxis = False)
+    
     
     return fig
 
