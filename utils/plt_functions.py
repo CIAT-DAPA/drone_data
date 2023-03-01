@@ -475,19 +475,20 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
     
     #fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
     #cont = 0
+    xarraydims = list(xarraydata.dims.keys())
+    depthpos = [i for i in range(len(xarraydims)) if xarraydims[i] ==name4d][0]+ 1
+    datelabesl = [np.datetime_as_string(i, unit='D') for i in xarraydata[name4d].values] 
     
     if bands is not None:
         xrdatac = xarraydata[bands].to_array().values.copy()
     else:
         xrdatac = xarraydata.to_array().values.copy()
-    xarraydims = list(xrdatac.dims.keys())
-    depthpos = [i for i in range(len(xarraydims)) if xarraydims[i] ==name4d]
-    datelabesl = [np.datetime_as_string(i, unit='D') for i in xrdatac[name4d].values] 
+    
     
     fig = plot_multitemporal_rgbarray(xrdatac, ncols = ncols, nrows=nrows,
                           figsize = figsize, scale = scale,
                           datelabes = datelabesl,
-                          #bands =['red','green','blue'],
+                          
                           depthpos = depthpos,
                           savedir = savedir,
                           fontsize = fontsize,
