@@ -100,7 +100,6 @@ def clip_boxes(boxes, shape):
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
 
 
-
 def xyxy_predicted_box(bbpredicted, im0shape, img1shape):
 
     pred = bbpredicted
@@ -571,7 +570,9 @@ def from_yolo_toxy(yolo_style, size):
 
     return (l, r, t, b)
 
+"""
 
+DEPRECATED
 def xyxy_predicted_box(img, yolo_model, device, half = False,
                        conf_thres=0.5,
                        iou_thres=0.45,
@@ -627,6 +628,7 @@ def xyxy_predicted_box(img, yolo_model, device, half = False,
     return xyxylist,yolocoords
 
 
+"""
 
 def odboxes_per_xarray(xarraydata, yolo_model, device, half,
                        conf_thres=0.70, img_size=512, min_size=128,

@@ -566,13 +566,9 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
     y = xrdata[channel].values.shape[ydimpos]
     x = xrdata[channel].values.shape[xdimpos]
 
-    print(initimageg[channel].copy().values.shape)
     xp,yp = (center[1]),(center[0])
-    print('x',xp, center[1], x)
-    print('y', yp, center[0], y)
-    pr = red_perc/100
 
-    print('y', y, 'x',x)
+    pr = red_perc/100
 
     redy = int(y*pr/2)
     redx = int(x*pr/2)
