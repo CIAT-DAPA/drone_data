@@ -112,7 +112,8 @@ def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z',
     if method == 'leaf_angle' and leaf_anglename in list(xrdata.keys()):
         xrfiltered = xrdata.where((xrdata[leaf_anglename])>leaf_anglethresh,np.nan)[heightvarname].copy()
     elif (method == 'window'):
-        xrfiltered = get_filteredimage(xrdata, heightvarname = heightvarname,red_perc = reduction_perc)
+                
+        xrfiltered = get_filteredimage(xrdata, channel = heightvarname,red_perc = reduction_perc)
         xrfiltered = xrfiltered[heightvarname]
         
     volvalues = []
@@ -433,7 +434,7 @@ class Phenomics:
         self._ph_varname = varname
         
         if reduction_perc is not None:
-            xrdata = get_filteredimage(self.xrdata, heightvarname = 'z',red_perc = reduction_perc)
+            xrdata = get_filteredimage(self.xrdata, channel= varname,red_perc = reduction_perc)
         else:
             xrdata = self.xrdata.copy()
 
@@ -534,30 +535,38 @@ class Phenomics:
                  filter_method = None,
                  rf_onlythesedates = None,
                  summaryquantiles = [0.25,0.5,0.75],
-                 days_earlystage = 15):
+                 days_earlystage = 15,
+                 datedimname = None):
                  
 
+        if datedimname is None:
+            name4d = list(xrdata.dims.keys())[0]
+        else:
+            name4d = datedimname
+            
         self._phenomic_summary = {}   
         self.dim_names = list(xrdata.dims.keys())
         self.quantiles_vals = summaryquantiles
 
+        datepos = [i for i in range(len(self.dim_names)) if self.dim_names[i] == name4d][0]
+        
         if len(self.dim_names)<3:
             raise ValueError('this functions was conceived to work only with multitemporal xarray')
 
 
         if dates_oi is None:
-            dates_oi = list(range(len(xrdata[self.dim_names[0]].values)))
+            dates_oi = list(range(len(xrdata[self.dim_names[datepos]].values)))
 
         if earlystages_dates is None:
             earlystagedate = 0
-            for i, date in enumerate(xrdata[self.dim_names[0]].values):
-                if (date - xrdata[self.dim_names[0]].values[0])/ np.timedelta64(1, 'D') >days_earlystage:
+            for i, date in enumerate(xrdata[self.dim_names[datepos]].values):
+                if (date - xrdata[self.dim_names[datepos]].values[0])/ np.timedelta64(1, 'D') >days_earlystage:
                     break
                 earlystagedate = i
-            earlystages_dates = xrdata[self.dim_names[0]].values[:earlystagedate]
+            earlystages_dates = xrdata[self.dim_names[datepos]].values[:earlystagedate]
             earlystages_dates = list(range(len(earlystages_dates)))
 
-        name4d = list(xrdata.dims.keys())[0]
+
         if earlystages_filter:
             dates_oi = earlystages_dates
         self.xrdata = xrdata.isel({name4d:dates_oi}).copy()

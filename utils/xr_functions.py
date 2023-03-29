@@ -89,7 +89,8 @@ def stack_as4dxarray(xarraylist,
                      axis_name = 'date', 
                      valuesaxis_names = None,
                      new_dimpos = 0,
-                     resizeinter_method = 'nearest'):
+                     resizeinter_method = 'nearest',
+                     **kwargs):
     """
     this function is used to stack multiple xarray along a time axis 
     the new xarray value will have dimension {T x C x H x W}
@@ -129,7 +130,7 @@ def stack_as4dxarray(xarraylist,
 
     # transform each multiband xarray to a standar dims size
 
-    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], interpolation=resizeinter_method, blur = False)
+    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], interpolation=resizeinter_method, blur = False,**kwargs)
     xarrayref = xarrayref.assign_coords({axis_name : valuesaxis_names[0]})
     xarrayref = xarrayref.expand_dims(dim = {axis_name:1}, axis = new_dimpos)
 
@@ -504,7 +505,7 @@ def filter_3Dxarray_contourarea(xrdata,
     
     imgfilteredperdate = []
     for i in range(len(xrdata[name4d])):
-        indlayer = xrdata.isel(date = i).to_array().values.copy()
+        indlayer = xrdata.isel({name4d:i}).to_array().values.copy()
         if onlythesedates is not None and i in onlythesedates:
             imgmasked =remove_smallpixels(indlayer, **kargs)
             indlayer = list_tif_2xarray(imgmasked, 
