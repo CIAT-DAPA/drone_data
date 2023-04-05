@@ -92,7 +92,7 @@ def get_files_paths(path, bands):
     except ValueError:
         print("file path doesn't exist")
 
-def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
+def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, overwrite = False):
 
     variable_names = list(xarraydata.keys())
     if expression is None and vi in list(VEGETATION_INDEX.keys()):
@@ -116,7 +116,7 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
             raise ValueError('there is not a variable named as {}'.format(varname))
 
     listvar = []
-    if vi not in variable_names:
+    if vi not in variable_names or overwrite:
 
         for i, varname in enumerate(varnames):
             if varname in variable_names:
@@ -130,27 +130,35 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None):
             label = vi
 
         vidata[np.isnan(vidata)] = xarraydata.attrs['nodata']
-        vidata[vidata == namask] = np.nan
-        xrvidata = xarray.DataArray(vidata)
+        xarraydata[label] = xarraydata[varname].copy()
+        xarraydata[label].values = vidata
+        #xrvidata = xarray.DataArray(vidata)
+        #xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+        #                    xarraydata.dims)))
         
-        xrvidata.name = label
+        #xrvidata['dims'] = list(xarraydata.dims.keys())
+        #xarraydata[label] = xrvidata
+        #vidata[vidata == namask] = np.nan
         
-        dimsnames = list(xarraydata.dims.keys())
-        if xrvidata.ndim == 3 and len(dimsnames) > 2:
         
-            dim1name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[0]][0]
-            dim2name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[1]][0]
-            dim3name = [i for i in dimsnames if i not in (dim1name,dim2name)]
-            xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
-                                                [dim1name,dim2name] + dim3name)))
+        #xrvidata.name = label
         
-        else:
-            xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
-                                            list(xarraydata.dims.keys()))))
+        #dimsnames = list(xarraydata.dims.keys())
+        #if xrvidata.ndim == 3 and len(dimsnames) > 2:
+        
+        #    dim1name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[0]][0]
+        #    dim2name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[1]][0]
+        #    dim3name = [i for i in dimsnames if i not in (dim1name,dim2name)]
+        #    xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+        #                                        [dim1name,dim2name] + dim3name)))
+        
+        #else:
+        #    xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
+        #                                    list(xarraydata.dims.keys()))))
 
 
         #print(xrvidata.dims.keys())
-        xarraydata = xarray.merge([xarraydata, xrvidata])
+        #xarraydata = xarray.merge([xarraydata, xrvidata])
         #xarraydata = xrvidata
 
         xarraydata.attrs['count'] = len(list(xarraydata.keys()))

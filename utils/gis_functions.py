@@ -562,7 +562,9 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
         
     if wrapper == 'hull':
         center = getcenter_from_hull(initimageg[channel].values)
-
+    if wrapper is None:
+        center = xrdata[channel].values.shape[xdimpos]//2,xrdata[channel].values.shape[ydimpos]//2
+    
     y = xrdata[channel].values.shape[ydimpos]
     x = xrdata[channel].values.shape[xdimpos]
 

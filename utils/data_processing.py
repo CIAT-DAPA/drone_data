@@ -105,9 +105,21 @@ def minmax_scale(data, minval = None, maxval = None):
     
     return (data - minval) / ((maxval - minval))
 
+
+def data_standarization(values, meanval = None, stdval = None):
+    if meanval is None:
+        meanval = np.nanmean(values)
+    if stdval is None:
+        stdval = np.nanstd(values)
+    
+    return (values - meanval)/stdval
+
+
 def scaleminmax(values):
     return ((values - np.nanmin(values)) /
             (np.nanmax(values) - np.nanmin(values)))
+
+
 
 
 def scalestd(values):

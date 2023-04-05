@@ -105,7 +105,8 @@ def single_vi_bsl_impt_preprocessing(
                         equalization = True,
                         nabandmaskname='red',
                         vilist = None,
-                        bsl_value = None
+                        bsl_value = None,
+                        overwritevi = False
                         ):
 
     suffix = ''
@@ -155,7 +156,7 @@ def single_vi_bsl_impt_preprocessing(
 
     if vilist is not None:
         for vi in vilist:
-            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi])
+            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi], overwrite=overwritevi)
         suffix +='vi_'
 
     xrdatac.attrs['count'] = len(list(xrdatac.keys()))

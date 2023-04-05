@@ -7,6 +7,7 @@ import xarray
 from shapely.geometry import Polygon
 import richdem as rd
 import rasterio
+import itertools
 
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
@@ -359,7 +360,7 @@ def get_minmax_from_picklelistxarray(fns_list,
     return min_dict, max_dict
 
 
-def get_meanstd_fromlistxarray(xrdatalist, name4d = 'date'):
+def get_meanstd_fromlistxarray(xrdatalist):
     """
     get nin max values from a list of xarray
 
@@ -377,14 +378,14 @@ def get_meanstd_fromlistxarray(xrdatalist, name4d = 'date'):
     mean_dict = dict(zip(list(xrdatalist[0].keys()), [9999]*len(list(xrdatalist[0].keys()))))
     std_dict = dict(zip(list(xrdatalist[0].keys()), [-9999]*len(list(xrdatalist[0].keys()))))
     for varname in list(xrdatalist[0].keys()):
+        
         datapervar = []
         for idpol in range(len(xrdatalist)):
             
-        
-            datapervar.append(xrdatalist[idpol][varname].to_numpy())
-
-        mean_dict[varname] = np.nanmean(datapervar)
-        std_dict[varname] = np.nanstd(datapervar)
+            datapervar.append(xrdatalist[idpol][varname].to_numpy().flatten())
+        #print(list(itertools.chain.from_iterable(datapervar)))
+        mean_dict[varname] = np.nanmean(list(itertools.chain.from_iterable(datapervar)))
+        std_dict[varname] = np.nanstd(list(itertools.chain.from_iterable(datapervar)))
 
     return mean_dict, std_dict
 

@@ -1,12 +1,14 @@
 import numpy as np
 
 import random
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold,StratifiedKFold
 import os
 import pandas as pd
 import numpy as np
 from itertools import compress
+import itertools
 
+import copy
 
 def select_columns(df, colstoselect, additionalfilt = 'gr_'):
     colsbol = [i.startswith(colstoselect[0]
@@ -84,7 +86,7 @@ class SplitIds(object):
         
         self.shuffle = shuffle
         self.seed = seed
-        print(ids_length)
+        
         if ids is None and ids_length is not None:
             self.ids_length = ids_length
             self.ids = self._ids()
@@ -107,6 +109,82 @@ class SplitIds(object):
         else:
             self.val_ids = None
         
+
+
+class SplitIdsClassification(SplitIds):
+    
+    def _get_mindata(self):
+        
+        mindata = len(self.targetvalues)
+        for i in list(self._datapercategory.keys()):
+            if self._datapercategory[i]<mindata:
+                mindata = self._datapercategory[i]
+                
+        return mindata
+    
+    def countdata_percategory(self):
+        listperc = {}
+        for i in range(len(self.categories)):
+            datapercat = np.sum(self.targetvalues == self.categories[i])
+            listperc[str(int(self.categories[i]))] =  int(datapercat * (datapercat/ len(self.targetvalues)))
+        
+        self._datapercategory = listperc   
+    
+    def _get_new_stratified_ids(self,listids, seed = 123):
+        
+        stratids = []
+        for i in range(len(self.categories)):
+            tmpcat = self.targetvalues[listids]
+            catvalues = np.array(listids)[tmpcat == self.categories[i]]
+            df = pd.DataFrame({'ids':catvalues})
+            if self.mindataper_category:
+                nsample = self.mindataper_category
+            else:
+                nsample = len(df)
+                
+            stratids.append(df.sample(n=nsample, random_state=seed)['ids'].values)
+        
+        return list(itertools.chain.from_iterable(stratids))
+    
+    
+    def stratified_kfolds(self, kfolds, shuffle = True):
+        if self.mindataper_category:        
+            kf = StratifiedKFold(n_splits=kfolds, shuffle = shuffle, random_state = self.seed)
+            
+            stratifiedids = [self._get_new_stratified_ids(
+                self.training_ids.copy(), seed=self.seed+(i*10)) for i in range(kfolds)]
+            
+            i = 0
+            idsperfold = []
+            for i,(train, test) in enumerate(kf.split(np.array(stratifiedids[i]),
+                                                                np.array(self.targetvalues)[stratifiedids[i]])):
+                
+                idsperfold.append([list(np.array(stratifiedids[i])[train]),
+                                            list(np.array(stratifiedids[i])[test])])
+                
+        else:
+            idsperfold = self.kfolds(kfolds)
+        
+        return idsperfold
+            
+    
+    def __init__(self, 
+                 targetvalues=None, 
+                 ids=None, 
+                 val_perc=None, test_perc=None, seed=123, shuffle=True, testids_fixed=None, stratified = True) -> None:
+        
+        self.targetvalues = targetvalues
+        self.categories = np.unique(targetvalues)
+        super().__init__(len(targetvalues), ids, val_perc, test_perc, seed, shuffle, testids_fixed)
+        
+        self._initial_tr_ids = copy.deepcopy(self.training_ids)
+        self._initial_val_ids = copy.deepcopy(self.val_ids)
+        self._initial_test_ids = copy.deepcopy(self.test_ids)
+        if stratified:
+            self.countdata_percategory()
+            self.mindataper_category = self._get_mindata()
+        else:
+            self.mindataper_category = None
             
 
 class SplitData(object):
