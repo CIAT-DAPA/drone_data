@@ -1,13 +1,19 @@
-import numpy as np
-import rasterio.features
+
+
 import json
 from PIL import Image
 import os
+import re
+import random
+
+import numpy as np
+import pandas as pd
+
 from pathlib import Path
 import pandas as pd
 from dateutil.parser import parse
-import re
-import random
+
+
 #from sklearn import linear_model
 
 
@@ -50,6 +56,7 @@ def assign_valuestoimg(data, height, width, na_indexes=None):
 
 
 def mask_usingGeometry(shp, xr_data):
+    import rasterio.features
     ## converto to json
     jsonshpdict = shp.to_json()
     jsonshp = [feature["geometry"]
@@ -160,6 +167,18 @@ def from_xarray_2array(xrdata, bands, normalize = False):
         data_list.append(banddata)
 
     return np.array(data_list)
+
+def from_xarray_2list(xrdata, bands, normalize = False):
+    data_list = []
+    for i in bands:
+        banddata = xrdata[i].data
+        banddata[banddata == xrdata.attrs['nodata']] = np.nan
+        if normalize:
+            banddata = (banddata *255)/ np.nanmax(banddata)
+
+        data_list.append(banddata)
+
+    return data_list
 
 
 def from_xarray_2_rgbimage(xarraydata,
@@ -325,3 +344,25 @@ class FolderWithImages(object):
             random.shuffle(filesinfolder)
 
         return filesinfolder
+    
+
+def from_long_towide(data, indexname, values_columnname, metrics_colname):
+
+    widephenomycs = []
+    for name in np.unique(data[metrics_colname].values):
+
+        ssdata = data.loc[data[metrics_colname] == name]
+        ssdatawide = ssdata.copy().reset_index()
+        ssdatawide['idx'] = ssdatawide.groupby([indexname]).cumcount()
+        ssdatawide['idx'] = np.unique(ssdatawide.metric.values) + '_t' + ssdatawide.idx.astype(str)
+        
+        widephenomycs.append(ssdatawide.pivot(
+        index=indexname,columns='idx',values=values_columnname).reset_index())
+    
+    dfconcatenated = widephenomycs[0]
+    for i in range(1,len(widephenomycs)):
+        dfconcatenated = pd.merge(dfconcatenated,widephenomycs[i], how="left", on=[indexname])
+
+    return dfconcatenated.reset_index()
+    
+    

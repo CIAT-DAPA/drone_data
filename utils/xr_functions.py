@@ -8,13 +8,17 @@ from shapely.geometry import Polygon
 import richdem as rd
 import rasterio
 import itertools
+import pandas as pd
+import os
 
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
-import os
+
 from .image_functions import radial_filter, remove_smallpixels
 from .gis_functions import list_tif_2xarray
+
+
 
 class CustomXarray(object):
 

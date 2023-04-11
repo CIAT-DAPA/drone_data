@@ -92,13 +92,17 @@ def get_files_paths(path, bands):
     except ValueError:
         print("file path doesn't exist")
 
-def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, overwrite = False):
 
-    variable_names = list(xarraydata.keys())
+
+def calculate_vi_fromarray(arraydata, variable_names,vi='ndvi', expression=None, label=None, navalues = None, overwrite = False):
+    """
+    a function to calculate vegetation indeces from an arrar of shape C, X, Y
+    
+    """
+    
     if expression is None and vi in list(VEGETATION_INDEX.keys()):
         expression = VEGETATION_INDEX[vi]
 
-    namask = xarraydata.attrs['nodata']
     # modify expresion finding varnames
     symbolstoremove = ['*','-','+','/',')','.','(',' ','[',']']
     test = expression
@@ -107,8 +111,8 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, 
 
     test = re.sub('\d', '-', test)
     varnames = [i for i in np.unique(np.array(test.split('-'))) if i != '']
+    
     for i, varname in enumerate(varnames):
-        
         if varname in variable_names:
             exp = (['listvar[{}]'.format(i), varname])
             expression = expression.replace(exp[1], exp[0])
@@ -116,51 +120,47 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, 
             raise ValueError('there is not a variable named as {}'.format(varname))
 
     listvar = []
+    
+    
     if vi not in variable_names or overwrite:
 
         for i, varname in enumerate(varnames):
             if varname in variable_names:
-                varvalue = xarraydata[varname].data
-                varvalue[varvalue == namask] = np.nan
+                pos = [j for j in range(len(variable_names)) if variable_names[j] == varname][0]
+
+                varvalue = arraydata[pos]
+                if navalues:
+                    varvalue[varvalue == navalues] = np.nan
                 listvar.append(varvalue)
         
         vidata = eval(expression)
             
         if label is None:
             label = vi
+            
+    else:
+        vidata = None
+        print("the VI {} was calculated before {}".format(vi, variable_names))
+    
 
+    return vidata, label
+
+
+
+def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, overwrite = False):
+
+    variable_names = list(xarraydata.keys())
+    namask = xarraydata.attrs['nodata']
+    vidata, label = calculate_vi_fromarray(xarraydata.to_array(), 
+                           variable_names,vi=vi, 
+                           expression=expression, 
+                           label=label, navalues = namask, overwrite = overwrite)
+    
+    if vidata is not None:
         vidata[np.isnan(vidata)] = xarraydata.attrs['nodata']
-        xarraydata[label] = xarraydata[varname].copy()
+        xarraydata[label] = xarraydata[variable_names[0]].copy()
+        
         xarraydata[label].values = vidata
-        #xrvidata = xarray.DataArray(vidata)
-        #xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
-        #                    xarraydata.dims)))
-        
-        #xrvidata['dims'] = list(xarraydata.dims.keys())
-        #xarraydata[label] = xrvidata
-        #vidata[vidata == namask] = np.nan
-        
-        
-        #xrvidata.name = label
-        
-        #dimsnames = list(xarraydata.dims.keys())
-        #if xrvidata.ndim == 3 and len(dimsnames) > 2:
-        
-        #    dim1name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[0]][0]
-        #    dim2name = [i for i in dimsnames if len(xarraydata[i].values) == xrvidata.shape[1]][0]
-        #    dim3name = [i for i in dimsnames if i not in (dim1name,dim2name)]
-        #    xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
-        #                                        [dim1name,dim2name] + dim3name)))
-        
-        #else:
-        #    xrvidata = xrvidata.rename(dict(zip(xrvidata.dims,
-        #                                    list(xarraydata.dims.keys()))))
-
-
-        #print(xrvidata.dims.keys())
-        #xarraydata = xarray.merge([xarraydata, xrvidata])
-        #xarraydata = xrvidata
-
         xarraydata.attrs['count'] = len(list(xarraydata.keys()))
 
     else:
