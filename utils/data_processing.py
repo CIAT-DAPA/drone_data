@@ -365,4 +365,3 @@ def from_long_towide(data, indexname, values_columnname, metrics_colname):
 
     return dfconcatenated.reset_index()
     
-    
