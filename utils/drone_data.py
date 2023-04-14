@@ -405,7 +405,19 @@ class DroneData:
                 print('check the bands names that you want to export')
 
     def split_into_tiles(self, polygons=False, **kargs):
-
+        """
+        Function to split an orthomoasaic image into tiles of regular size
+        
+         Parameters:
+        ----------
+        width: int
+            tile's width size
+        height:
+            tile's height size
+        overlap: float, optional
+            value between 0 and 1.0 that sets the overlap percentage between tiles 
+        
+        """
         self._tiles_pols = split_xarray_data(self.drone_data, polygons=polygons, **kargs)
         
         print("the image was divided into {} tiles".format(len(self._tiles_pols)))

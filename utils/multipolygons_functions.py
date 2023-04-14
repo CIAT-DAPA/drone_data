@@ -381,8 +381,13 @@ class IndividualUAVData(object):
         
         try:
             if os.path.exists(self.threed_input):
+                buffertmp = self._boundaries_buffer.copy().reset_index(),
+                buffertmp = buffertmp[0] if type(buffertmp) == tuple else buffertmp
+                buffertmp = buffertmp.rename(columns={0:'geometry'})
+                
                 pcloud_data = CloudPoints(self.threed_input,
-                                gpdpolygon= self.spatial_boundaries.copy(), 
+                                #gpdpolygon= self.spatial_boundaries.copy(), 
+                                gpdpolygon=buffertmp,
                                 verbose = False)
                 pcloud_data.to_xarray(interpolate = interpolate,**kwargs)
                 self._fnsuffix = self._fnsuffix+ 'pointcloud'

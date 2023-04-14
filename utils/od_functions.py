@@ -9,6 +9,7 @@ import time
 import torchvision
 import cv2
 import copy
+import tqdm
 
 from . import gis_functions as gf
 from .data_processing import from_xarray_2array
@@ -164,7 +165,16 @@ def draw_frame(img, bbbox, dictlabels = None, default_color = (255,255,255)):
     return imgc   
 
 def check_image(img, inputshape = (512,512)):
+    """
+    Function to validate the input image's size and rearrange to yolo's order input
+    (N, C, X, Y)
+    Args:
+        img numpy array: image
+        inputshape (tuple, optional): the model's input size. Defaults to (512,512).
 
+    Returns:
+        a 4-D numpy array (N, C, X, Y)
+    """
     imgc = img.copy()
 
     if len(imgc.shape) == 3:
@@ -176,17 +186,20 @@ def check_image(img, inputshape = (512,512)):
             imgc = np.expand_dims(imgc, axis=0)
         imgc = imgc.swapaxes(3, 2).swapaxes(2, 1)
     else:
+        
         imgc = imgc.swapaxes(1, 2).swapaxes(2, 3)
         if (not imgc.shape[2] == inputshape[0]) and not (imgc.shape[3] == inputshape[1]):
             imgc = cv2.resize(imgc[0], inputshape, interpolation=cv2.INTER_AREA)
+            imgc = np.expand_dims(imgc, axis=0)
+        
         imgc = imgc.swapaxes(3, 2).swapaxes(2, 1)
 
     return imgc
 
 class DroneObjectDetection(DroneData):
     
-    def draw_bb_in_tile(self,imgtile):
-        xyposhw,yoloimgcoords = self.predict_tile_coords(imgtile, conf_thres=0.50)
+    def draw_bb_in_tile(self,imgtile, conf_thres=0.50):
+        xyposhw,yoloimgcoords = self.predict_tile_coords(imgtile, conf_thres=conf_thres)
         m= []
         for l, r, t, b in yoloimgcoords:
             m.append([l, r, t, b])
@@ -244,10 +257,8 @@ class DroneObjectDetection(DroneData):
             else:
                 tileslist =  list(range(len(self._tiles_pols)))
 
-            for i in tileslist:
-                print(i)
-
-                
+            for i in tqdm.tqdm(tileslist):
+               
                 bbasgeodata, _ = self.predict_tile_coords(self.tiles_data(i), **kwargs)
                 
                 if bbasgeodata is not None:
@@ -281,12 +292,14 @@ class DroneObjectDetection(DroneData):
         img = img.half() if half else img.float()
         
         img = img / 255.
-        print(img.shape)
+        
         bounding_box = self.model(img, augment=False)
         pred = non_max_suppression(bounding_box, conf_thres, iou_thres, classes,
                                agnostic_nms, max_det=max_det)
         return pred, img
-
+    def export_as_yolo_training(self):
+        
+        pass
     def __init__(self, inputpath, yolo_model = None, device = None, **kwargs) -> None:
         
         super().__init__(
