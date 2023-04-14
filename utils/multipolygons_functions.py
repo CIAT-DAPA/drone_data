@@ -17,26 +17,7 @@ from .xyz_functions import calculate_leaf_angle
 from .drone_data import calculate_vi_fromxarray
 
 from .drone_data import DroneData
-
-
-
-
-VEGETATION_INDEX = {# rgb bands
-'grvi': '(green_ms - red_ms)/(green_ms + red_ms)',
-'grvi_rgb': '(green - red)/((green + red)+0.00001)',
-'mgrvi': '((green_ms*green_ms) - (red_ms*red_ms))/((green_ms*green_ms) + (red_ms*red_ms))',
-'mgrvi_rgb': '((green*green) - (red*red))/(((green*green) + (red*red))+0.00001)',
-'rgbvi': '((green_ms*green_ms) - (blue_ms*red_ms))/ ((green_ms*green_ms) + (blue_ms*red_ms))',
-'rgbvi_rgb': '((green*green) - (blue*red))/ (((green*green) + (blue*red))+0.00001)',
- # nir indexes
- 'ndvi': '(nir - red_ms)/(nir + red_ms)',
-'ndre': '(nir - edge)/(nir + edge)',
-'gndvi': '(nir - green_ms)/(nir + green_ms)',
-'regnvi': '(edge - green_ms)/(edge + green_ms)',
-'reci': '(nir / edge) - 1',
-'negvi': '((nir*nir) - (edge*green_ms))/ ((nir*nir) + (edge*green_ms))',
-'savi':  '((nir - red_ms) / (nir + red_ms + 0.5)) * (1.5)'}
-
+from .general import MSVEGETATION_INDEX
 
 def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None,
                                       ms_path=None, xyz_path=None,  
@@ -156,7 +137,9 @@ def single_vi_bsl_impt_preprocessing(
 
     if vilist is not None:
         for vi in vilist:
-            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,expression = VEGETATION_INDEX[vi], overwrite=overwritevi)
+            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,
+                                              expression = MSVEGETATION_INDEX[vi], 
+                                              overwrite=overwritevi)
         suffix +='vi_'
 
     xrdatac.attrs['count'] = len(list(xrdatac.keys()))

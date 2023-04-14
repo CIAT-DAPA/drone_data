@@ -20,22 +20,11 @@ import geopandas as gpd
 
 from . import gis_functions as gf
 from .xr_functions import split_xarray_data, add_2dlayer_toxarrayr
+from .general import VEGETATION_INDEX
+from .mc_imagery import calculate_vi_fromarray
 
 import re
-
-VEGETATION_INDEX = {# rgb bands
-'grvi': '(green - red)/(green + red)',
-'grvi_eq': '(green_eq - red_eq)/(green_eq + red_eq)',
-'mgrvi': '((green*green) - (red*red))/((green*green) + (red*red))',
-'rgbvi': '((green*green) - (blue*red))/ ((green*green) + (blue*red))',
- # nir indexes
-'ndvi': '(nir - red)/(nir + red)',
-'ndre': '(nir - edge)/(nir + edge)',
-'gndvi': '(nir - green)/(nir + green)',
-'regnvi': '(edge - green)/(edge + green)',
-'reci': '(nir / edge) - 1',
-'negvi': '((nir*nir) - (edge*green))/ ((nir*nir) + (edge*green))'}
-
+import pickle
 
 
 def drop_bands(xarraydata, bands):
@@ -94,64 +83,11 @@ def get_files_paths(path, bands):
 
 
 
-def calculate_vi_fromarray(arraydata, variable_names,vi='ndvi', expression=None, label=None, navalues = None, overwrite = False):
-    """
-    a function to calculate vegetation indeces from an arrar of shape C, X, Y
-    
-    """
-    
-    if expression is None and vi in list(VEGETATION_INDEX.keys()):
-        expression = VEGETATION_INDEX[vi]
-
-    # modify expresion finding varnames
-    symbolstoremove = ['*','-','+','/',')','.','(',' ','[',']']
-    test = expression
-    for c in symbolstoremove:
-        test = test.replace(c, '-')
-
-    test = re.sub('\d', '-', test)
-    varnames = [i for i in np.unique(np.array(test.split('-'))) if i != '']
-    
-    for i, varname in enumerate(varnames):
-        if varname in variable_names:
-            exp = (['listvar[{}]'.format(i), varname])
-            expression = expression.replace(exp[1], exp[0])
-        else:
-            raise ValueError('there is not a variable named as {}'.format(varname))
-
-    listvar = []
-    
-    
-    if vi not in variable_names or overwrite:
-
-        for i, varname in enumerate(varnames):
-            if varname in variable_names:
-                pos = [j for j in range(len(variable_names)) if variable_names[j] == varname][0]
-
-                varvalue = arraydata[pos]
-                if navalues:
-                    varvalue[varvalue == navalues] = np.nan
-                listvar.append(varvalue)
-        
-        vidata = eval(expression)
-            
-        if label is None:
-            label = vi
-            
-    else:
-        vidata = None
-        print("the VI {} was calculated before {}".format(vi, variable_names))
-    
-
-    return vidata, label
-
-
-
 def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, overwrite = False):
 
     variable_names = list(xarraydata.keys())
     namask = xarraydata.attrs['nodata']
-    vidata, label = calculate_vi_fromarray(xarraydata.to_array(), 
+    vidata, label = calculate_vi_fromarray(xarraydata.to_array().values, 
                            variable_names,vi=vi, 
                            expression=expression, 
                            label=label, navalues = namask, overwrite = overwrite)
@@ -554,3 +490,54 @@ class DroneData:
 
 
 
+
+
+class CustomXarray(object):
+
+    def _export_aspickle(self, path, fn, verbose = False) -> None:
+
+        if not os.path.exists(path):
+            os.mkdir(path)
+        
+        outfn = os.path.join(path,fn+'.pickle')
+        with open(outfn, "wb") as f:
+            pickle.dump(self._filetoexport, f)
+
+        if verbose:
+            print('dat exported to {}'.format(outfn))
+
+        
+    def export_as_dict(self, path, fn, **kwargs):
+
+        self._filetoexport = self.to_custom_dict()
+        self._export_aspickle(path, fn,**kwargs)
+
+    def export_as_pickle(self, path, fn,**kwargs):
+
+        self._filetoexport = self.xrdata
+        self._export_aspickle(path, fn,**kwargs)
+
+
+    def to_custom_dict(self):
+
+        datadict = {
+            'variables':{},
+            'dims':{},
+            'attributes': {}}
+
+        self.variables = list(self.xrdata.keys())
+        
+        for feature in self.variables:
+            datadict['variables'][feature] = self.xrdata[feature].values
+
+        for dim in self.xrdata.dims.keys():
+            datadict['dims'][dim] = np.unique(self.xrdata[dim])
+        
+        for attr in self.xrdata.attrs.keys():
+            datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
+
+        return datadict
+
+    def __init__(self, xarraydata) -> None:
+        
+        self.xrdata = xarraydata
