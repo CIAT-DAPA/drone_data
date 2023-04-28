@@ -229,6 +229,7 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
                       colorbar = colorbar, legfontsize = legfontsize,
                       legtickssize = legtickssize)
 
+import matplotlib.pyplot as plt
 
 def plot_multichanels(data, num_rows = 2, 
                      num_columns = 2, figsize = [10,10],
@@ -239,7 +240,8 @@ def plot_multichanels(data, num_rows = 2,
                      legfontsize = 15,
                      legtickssize = 15,
                      colorbar = True, vmin = None, vmax = None,
-                     newlegendticks = None):
+                     newlegendticks = None,
+                     fontname = "Arial"):
     """
     create a figure showing one channel or multiple channels
     ----------
@@ -267,7 +269,8 @@ def plot_multichanels(data, num_rows = 2,
 
     Returns
     -------
-    """                 
+    """     
+                
     import matplotlib as mpl
     if chanels_names is None:
         chanels_names = list(range(data.shape[0]))
@@ -281,18 +284,37 @@ def plot_multichanels(data, num_rows = 2,
         vmin = np.nanmin(data)
     if vmax is None:
         vmax = np.nanmax(data)
+    
+    fontmainfigure = {'family': fontname,
+        'color':  'black',
+        'weight': 'normal',
+        'size': fontsize,
+        }
+
+    fontlegtick = {'family': fontname,
+        'color':  'black',
+        'weight': 'normal',
+        'size': legtickssize,
+        }
+    
+    fontlegtitle = {'family': fontname,
+        'color':  'black',
+        'weight': 'normal',
+        'size': legfontsize,
+        }
+    
     for j in range(num_rows):
         for i in range(num_columns):
             if count < len(vars):
 
                 if num_rows>1 and num_columns > 1:
                     ax[j,i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
-                    ax[j,i].set_title(vars[count], fontsize=fontsize)
+                    ax[j,i].set_title(vars[count], fontdict=fontmainfigure)
                     ax[j,i].invert_xaxis()
                     ax[j,i].set_axis_off()
                 elif num_rows == 1 or num_columns == 1:
                     ax[i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
-                    ax[i].set_title(vars[count], fontsize=fontsize)
+                    ax[i].set_title(vars[count], fontdict=fontmainfigure)
                     ax[i].invert_xaxis()
                     ax[i].set_axis_off()
 
@@ -315,15 +337,17 @@ def plot_multichanels(data, num_rows = 2,
                     pad=0.15)
         cb.ax.tick_params(labelsize=legtickssize)
         if label_name is not None:
-            cb.set_label(label=label_name, fontdict={'size' : legfontsize})
+            cb.set_label(label=label_name, fontdict=fontlegtitle)
         if newlegendticks:
             cb.ax.get_yaxis().set_ticks([])
             for j, lab in enumerate(newlegendticks):
                 cb.ax.text(vmax, (7.2 * j + 2) / (vmax+3), lab,
-                           ha='left', va='center',fontsize=legtickssize)
+                           ha='left', va='center',fontdict=fontlegtick)
 
             
     return fig,ax
+
+
 
 
 def plot_slices(data, num_rows, num_columns, width, height, rot= False, invertaxis = True):
@@ -365,7 +389,11 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
                           savedir = None,
                           fontsize = 15,
                           titlelabel = True,
-                          invertaxis = False):
+                          invertaxis = False,
+                          addcenter = False,
+                          colorcenter = "red",
+                          sizecenter = 8,
+                          fontname = "Arial"):
     """
     create a figure showing one ataked multiband figure
     ----------
@@ -389,7 +417,15 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
     Returns
     -------
     fig: a matplotlib firgure
-    """    
+    """
+    
+    fontmainfigure = {'family': fontname,
+        'color':  'black',
+        'weight': 'normal',
+        'size': fontsize,
+        }
+
+
     if ncols is None:
         ncols = math.ceil(arraydata.shape[depthpos] / nrows)
     
@@ -417,18 +453,29 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
                     axs[xi,yi].imshow(datatoplot)
                     axs[xi,yi].set_axis_off()
                     if titlelabel:
-                        axs[xi,yi].set_title(datelabes[cont], fontsize=fontsize)
+                        axs[xi,yi].set_title(datelabes[cont], fontdict=fontmainfigure)
                     if invertaxis:
                         axs[xi,yi].invert_xaxis()
+                    
+                    if addcenter:
+                        
+                        c = [datatoplot.shape[0]//2, datatoplot.shape[1]//2]
+                        
+                        axs[xi,yi].scatter( c[1], c[0], c = [colorcenter], s = [sizecenter])
 
                     cont+=1
                 else:
                     axs[yi].imshow(datatoplot)
                     axs[yi].set_axis_off()
                     if titlelabel:
-                        axs[yi].set_title(datelabes[cont], fontsize=fontsize)
+                        axs[yi].set_title(datelabes[cont], fontdict=fontmainfigure)
                     if invertaxis:
                         axs[yi].invert_xaxis()
+
+                    if addcenter:
+                        c = [datatoplot.shape[2]//2, datatoplot.shape[1]//2]
+                        axs[yi].scatter( c[1], c[0], c = [colorcenter], s = [sizecenter])
+
                     cont = yi+1
                 
             else:
@@ -445,7 +492,10 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                           savedir = None,
                           fontsize = 15,
                           titlelabel = True,
-                          name4d = 'date'):
+                          depthpos = None,
+                          name4d = 'date',
+                          invertaxis = True,
+                          **kwargs):
     """
     create a figure showing one ataked multiband figure
     ----------
@@ -476,7 +526,9 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
     #fig, axs = plt.subplots(nrows, ncols,figsize=figsize)
     #cont = 0
     xarraydims = list(xarraydata.dims.keys())
-    depthpos = [i for i in range(len(xarraydims)) if xarraydims[i] ==name4d][0]+ 1
+    if depthpos is None:
+        depthpos = [i for i in range(len(xarraydims)) if xarraydims[i] ==name4d][0]+ 1
+        
     datelabesl = [np.datetime_as_string(i, unit='D') for i in xarraydata[name4d].values] 
     
     if bands is not None:
@@ -493,7 +545,8 @@ def plot_multitemporal_rgb(xarraydata, nrows = 2, ncols = None,
                           savedir = savedir,
                           fontsize = fontsize,
                           titlelabel = titlelabel,
-                          invertaxis = False)
+                          invertaxis = invertaxis,
+                          **kwargs)
     
     
     return fig
@@ -532,9 +585,12 @@ def plot_multitemporal_cluster(xarraydata, nrows = 2, ncols = None,
     fig.colorbar(datatoplot, cax=cbar_ax)
 
 
+
 def adding_phfigure(altref, indcolors, xaxisref, yphreference, var, fontsize, vmin, vmax, vmaxl, 
                     ax = None, yfontize = 18,
-                    hmin = None, hmax = None):
+                    hmin = None, hmax = None,
+                    fontname = 'Helvetica'):
+    
     xvalues = altref.iloc[:,0]
     xvalues = xvalues - hmin
     ax.scatter(xvalues*100,
@@ -547,7 +603,7 @@ def adding_phfigure(altref, indcolors, xaxisref, yphreference, var, fontsize, vm
     ax.plot((xaxisref, xaxisref), (yphreference,yphreference), color = 'black', linestyle = '-')
     ax.plot((xaxisref, xaxisref), (0,yphreference), color = 'red', linestyle = '-', linewidth=10)
     ax.axhline(y = 0, color = 'black', linestyle = '-')
-    ax.set_title(var, fontsize=fontsize, fontweight='bold')
+    ax.set_title(var, fontsize=fontsize, fontweight='bold', fontname = fontname)
     #ax.set_xticks([])
     ax.yaxis.set_ticks(np.arange(0, (vmax-(vmax%10))+20, 10))
     ax.grid(color = 'gray', linestyle = '--', linewidth = 1,axis = 'y')
@@ -573,7 +629,8 @@ def plot_heights(xrdata, num_rows = 2,
                      ax = None,
                      vmin = None,
                      vmax = None,
-                     reduction_perc = None):
+                     reduction_perc = None,
+                    fontname = 'Helvetica'):
     """
     create a figure showing a 2d profile from a 3d image reconstruction
     ----------
@@ -601,9 +658,7 @@ def plot_heights(xrdata, num_rows = 2,
 
     Returns
     -------
-    """ 
-    from .gis_functions import get_filteredimage
-
+    """    
     if chanels_names is None:
         chanels_names = [np.datetime_as_string(i, unit='D') for i in xrdata.date.values ]
 
@@ -652,13 +707,13 @@ def plot_heights(xrdata, num_rows = 2,
                     ax[j,i] = adding_phfigure(altref, indcolors, xaxisref, 
                                               yphreference, vars[count], 
                                               fontsize, vmin, vmax, vmaxl, ax = ax[j,i],
-                                              hmin = hmin, hmax = hmax)
+                                              hmin = hmin, hmax = hmax, fontname =fontname)
                     
                 else:
                     ax[i] = adding_phfigure(altref, indcolors, xaxisref, 
                                             yphreference, vars[count], 
                                             fontsize, vmin, vmax, vmaxl, ax = ax[i],
-                                            hmin = hmin, hmax = hmax)
+                                            hmin = hmin, hmax = hmax, fontname =fontname)
 
                 count +=1
             else:
