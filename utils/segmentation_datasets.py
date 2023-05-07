@@ -91,6 +91,9 @@ def clip_image(image, bounding_box,
             imgclipped = image[newy1:newy1+(height+pad_height1*2), 
                                 newx1:newx1+(width+pad_width1*2)] 
     
+    else:
+        imgclipped = image[
+            y1:y2,x1:x2] 
     
     return imgclipped
 
@@ -106,6 +109,79 @@ def get_heights_and_widths(maskcontours):
     pwidthb=getmidlewidthcoordinates(p1,p2,alpharad)
 
     return pheightu, pheigthb, pwidthu, pwidthb
+
+
+def plot_individual_mask(rgbimg, maskimg, textlabel = None,
+                         col = [0,255,255], mask_image = True,
+                         addlines = True, addlabel = True,sizefactorred = 250,
+                    heightframefactor = .15,
+                    widthframefactor = .3,
+                    textthickness = 1):
+    
+
+    msksones = maskimg.copy()
+
+    if np.max(msksones != 1):
+        msksones[msksones<150] = 0
+        msksones[msksones>=150] = 1
+    
+    if mask_image:
+        newimg = cv2.bitwise_and(rgbimg.astype(np.uint8),rgbimg.astype(np.uint8),
+                                mask = msksones)
+    else:
+        newimg = np.array(rgbimg).astype(np.uint8)
+
+
+    img = _apply_mask(newimg, (msksones).astype(np.uint8), col, 
+                      alpha=0.2)
+    #img = newimg
+    
+    linecolor = list((np.array(col)*255).astype(np.uint8))
+    m = np.ascontiguousarray(img, dtype=np.uint8)
+    if addlines:
+        m = cv2.drawContours(m,[find_contours(maskimg, hull = True)],0,[int(i) for i in linecolor],1)
+        pheightu, pheigthb, pwidthu, pwidthb = get_heights_and_widths(
+            find_contours(maskimg, hull = True))
+        m = cv2.line(m, pheightu, pheigthb, (0,0,0), 1)
+        m = cv2.line(m, pwidthu, pwidthb, (0,0,0), 1)
+
+    if addlabel:
+        str_id = textlabel if textlabel is not None else '0'
+
+        x1,y1,x2,y2 = get_boundingboxfromseg(maskimg)
+
+        m = add_frame_label(m,
+                str(str_id),
+                [int(x1),int(y1),int(x2),int(y2)],[
+            int(i*255) for i in col],
+                sizefactorred = sizefactorred,
+                heightframefactor = heightframefactor,
+                widthframefactor = widthframefactor,
+                textthickness = textthickness)
+    return m
+
+
+
+def get_height_width(grayimg, pixelsize = 1):
+    
+    ## find contours
+    wrapped_box = find_contours(grayimg)
+
+    ## get distances
+    pheightu, pheigthb, pwidthu, pwidthb = get_heights_and_widths(wrapped_box)
+    d1 = euclidean_distance(pheightu, pheigthb)
+    d2 = euclidean_distance(pwidthu, pwidthb)
+    
+    pheightu, pheigthb, pwidthu, pwidthb = get_heights_and_widths(wrapped_box)
+    d1 = euclidean_distance(pheightu, pheigthb)
+    d2 = euclidean_distance(pwidthu, pwidthb)
+
+    ## with this statement there is an assumption that the rice width is always lower than height
+    larger = d1 if d1>d2 else d2
+    shorter = d1 if d1<d2 else d2
+    
+    return larger* pixelsize, shorter*pixelsize
+
 
 class SegmentationUAVData(DroneData):
     
@@ -348,14 +424,8 @@ class SegmentationUAVData(DroneData):
 
         # extract only the area that cover the prediction
         maskimage = self._clip_image(self.msks[cc_id], self.bbs[cc_id], padding = padding)
-        wrapped_box = self._find_contours(maskimage, hull=hull)
-        pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(wrapped_box)
-        d1 = euclidean_distance(pheightu, pheigthb)
-        d2 = euclidean_distance(pwidthu, pwidthb)
-        #distper = np.unique([euclidean_distance(wrapped_box[i],wrapped_box[i+1]) for i in range(len(wrapped_box)-1) ])
-        ## with this statement there is an assumption that the rice width is always lower than height
-        larger = d1 if d1>d2 else d2
-        shorter = d1 if d1<d2 else d2
+        
+        larger, shorter =get_height_width(maskimage.astype(np.uint8))
         msksones = maskimage.copy()
         msksones[msksones>0] = 1
         
@@ -365,23 +435,19 @@ class SegmentationUAVData(DroneData):
             'seed_id':[cc_id],'height': [larger], 
                 'width': [shorter], 'area': [area]}
         
-        ## metrics from seeds
+        
     def plot_individual_cc(self, cc_id,**kwargs):
         
         return self._add_metriclines_to_single_detection(cc_id, **kwargs)
 
     def _add_metriclines_to_single_detection(self, 
                                              cc_id, 
-                    addlines = True, addlabel = True,
+                    
                     padding = 30,
-                    mask_image = False,
-                    sizefactorred = 250,
-                    heightframefactor = .15,
-                    widthframefactor = .3,
-                    textthickness = 1):
+                    **kwargs):
         
         import copy
-        print(self._frames_colors)
+        #print(self._frames_colors)
         if self._frames_colors is None:
             self._frames_colors = random_colors(len(self.bbs))
             
@@ -398,48 +464,8 @@ class SegmentationUAVData(DroneData):
                                                                padding = padding,
                                                                paddingwithzeros = False))
         
-        #maskimage = self._clip_image(self.msks[cc_id], self.bbs[cc_id], padding = padding)
-        #wrapped_box = self._find_contours(maskimage)
-        
-
-        msksones = maskimage.copy()
-        
-        msksones[msksones<150] = 0
-        msksones[msksones>=150] = 1
-        #msksones[msksones>0] = 1
-        
-        
-        if mask_image:
-
-            newimg = cv2.bitwise_and(imgclipped.astype(np.uint8),img,
-                                     mask = msksones)
-        else:
-            newimg = np.array(imgclipped)
-        
-        img = _apply_mask(newimg, (msksones).astype(np.uint8), col, alpha=0.2)
-        #img = newimg
-        
-        linecolor = list((np.array(col)*255).astype(np.uint8))
-        m = np.ascontiguousarray(img, dtype=np.uint8)
-        if addlines:
-            m = cv2.drawContours(m,[self._find_contours(maskimage, hull = True)],0,[int(i) for i in linecolor],1)
-            pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(
-                self._find_contours(maskimage, hull = True))
-            m = cv2.line(m, pheightu, pheigthb, (0,0,0), 1)
-            m = cv2.line(m, pwidthu, pwidthb, (0,0,0), 1)
-        
-        if addlabel:
-            
-            x1,y1,x2,y2 = get_boundingboxfromseg(maskimage)
-
-            m = add_frame_label(m,
-                    str(cc_id),
-                    [int(x1),int(y1),int(x2),int(y2)],[
-                int(i*255) for i in col],
-                    sizefactorred = sizefactorred,
-                    heightframefactor = heightframefactor,
-                    widthframefactor = widthframefactor,
-                    textthickness = textthickness)
+        m = plot_individual_mask(imgclipped, maskimage, textlabel = str(cc_id),
+                         col = col, **kwargs)
             
         return m,maskimage
     
