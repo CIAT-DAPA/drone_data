@@ -45,6 +45,68 @@ def _apply_mask(image, mask, color, alpha=0.5):
                                   image[:, :, c])
     return image
 
+def find_contours(image, hull = False):
+    
+    maskimage = image.copy()
+    #imgmas = (maskimage*255).astype(np.uint8)
+    ## mask must has alues btwn 0  and 255
+    if np.max(maskimage)==1.:
+        maskimage = maskimage * 255.
+    contours = contours_from_image(maskimage)
+    if hull:
+        firstcontour = cv2.convexHull(contours[0])
+    else:
+        firstcontour = contours[0]
+        
+    rect = cv2.minAreaRect(firstcontour)
+    
+    box = cv2.boxPoints(rect)
+    box = np.int0(box)
+    return box
+    
+
+def clip_image(image, bounding_box, 
+               bbtype = 'xminyminxmaxymax', 
+               padding = None, 
+                    paddingwithzeros =True):
+        
+    if bbtype == 'xminyminxmaxymax':
+        x1,y1,x2,y2 = bounding_box
+        x1,y1,x2,y2 = int(x1),int(y1),int(x2),int(y2)
+        
+    if padding:
+        if paddingwithzeros:
+            imgclipped = image[
+            y1:y2,x1:x2] 
+            
+            imgclipped = pad_images(imgclipped, padding_factor = padding)
+        else:
+            height = abs(y1-y2)
+            width = abs(x1-x2)
+            zoom_factor = padding / 100 if padding > 1 else padding
+            new_height, new_width = height + int(height * zoom_factor), width + int(width * zoom_factor)  
+            pad_height1, pad_width1 = abs(new_height - height) // 2, abs(new_width - width) //2
+            newy1 = 0 if (y1 - pad_height1)<0 else (y1 - pad_height1)
+            newx1 = 0 if (x1 - pad_width1)<0 else (x1 - pad_width1)
+            imgclipped = image[newy1:newy1+(height+pad_height1*2), 
+                                newx1:newx1+(width+pad_width1*2)] 
+    
+    
+    return imgclipped
+
+#
+def get_heights_and_widths(maskcontours):
+
+    p1,p2,p3,p4=maskcontours
+    alpharad=math.acos((p2[0] - p1[0])/euclidean_distance(p1,p2))
+
+    pheightu=getmidleheightcoordinates(p2,p3,alpharad)
+    pheigthb=getmidleheightcoordinates(p1,p4,alpharad)
+    pwidthu=getmidlewidthcoordinates(p4,p3,alpharad)
+    pwidthb=getmidlewidthcoordinates(p1,p2,alpharad)
+
+    return pheightu, pheigthb, pwidthu, pwidthb
+
 class SegmentationUAVData(DroneData):
     
     
@@ -284,8 +346,7 @@ class SegmentationUAVData(DroneData):
     
     def calculate_onecc_metrics(self, cc_id, padding = 20, hull = True):
 
-        #imageres = self._imgastensor.mul(255).permute(1, 2, 0).byte().numpy()
-
+        # extract only the area that cover the prediction
         maskimage = self._clip_image(self.msks[cc_id], self.bbs[cc_id], padding = padding)
         wrapped_box = self._find_contours(maskimage, hull=hull)
         pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(wrapped_box)
@@ -488,56 +549,18 @@ class SegmentationUAVData(DroneData):
     @staticmethod
     def _get_heights_and_widths(maskcontours):
 
-        p1,p2,p3,p4=maskcontours
-        alpharad=math.acos((p2[0] - p1[0])/euclidean_distance(p1,p2))
-
-        pheightu=getmidleheightcoordinates(p2,p3,alpharad)
-        pheigthb=getmidleheightcoordinates(p1,p4,alpharad)
-        pwidthu=getmidlewidthcoordinates(p4,p3,alpharad)
-        pwidthb=getmidlewidthcoordinates(p1,p2,alpharad)
-
-        return pheightu, pheigthb, pwidthu, pwidthb
+        return get_heights_and_widths(maskcontours)
     
     @staticmethod 
     def _clip_image(image, bounding_box, bbtype = 'xminyminxmaxymax', padding = None, 
                     paddingwithzeros =True):
         
-        if bbtype == 'xminyminxmaxymax':
-            x1,y1,x2,y2 = bounding_box
-            x1,y1,x2,y2 = int(x1),int(y1),int(x2),int(y2)
-            
-        if padding:
-            if paddingwithzeros:
-                imgclipped = image[
-                y1:y2,x1:x2] 
-                
-                imgclipped = pad_images(imgclipped, padding_factor = padding)
-            else:
-                height = abs(y1-y2)
-                width = abs(x1-x2)
-                zoom_factor = padding / 100 if padding > 1 else padding
-                new_height, new_width = height + int(height * zoom_factor), width + int(width * zoom_factor)  
-                pad_height1, pad_width1 = abs(new_height - height) // 2, abs(new_width - width) //2
-                newy1 = 0 if (y1 - pad_height1)<0 else (y1 - pad_height1)
-                newx1 = 0 if (x1 - pad_width1)<0 else (x1 - pad_width1)
-                imgclipped = image[newy1:newy1+(height+pad_height1*2), 
-                                   newx1:newx1+(width+pad_width1*2)] 
-        
-        
-        return imgclipped
+        return clip_image(image, bounding_box, 
+               bbtype = bbtype, 
+               padding = padding, 
+                    paddingwithzeros =paddingwithzeros)
 
     @staticmethod 
     def _find_contours(image, hull = False):
-        maskimage = image.copy()
-        #imgmas = (maskimage*255).astype(np.uint8)
-        contours = contours_from_image(maskimage)
-        if hull:
-            firstcontour = cv2.convexHull(contours[0])
-        else:
-            firstcontour = contours[0]
-            
-        rect = cv2.minAreaRect(firstcontour)
         
-        box = cv2.boxPoints(rect)
-        box = np.int0(box)
-        return box
+        return find_contours(image, hull = hull)
