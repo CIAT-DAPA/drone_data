@@ -382,6 +382,108 @@ class SegmentationUAVData(DroneData):
             
         return m,maskimage
     
+    def evaluate_predictions_by_users(self):
+        from matplotlib.pyplot import plot, ion, show, close
+        
+        print("""
+              For the current image {} bounding boxes were detected
+              which method will you prefer to select the correct predictions\n
+              1. by threshhold scores
+              2. one by one
+              
+              """.format(
+                         len(self.predictions[0]['scores'])))
+        
+        evaluation_method = input()       
+        imgtoplot = self._imgastensor.mul(255).permute(1, 2, 0).byte().numpy()
+        onlythesepos = []
+        if evaluation_method == "1":
+            minthreshold = input("the mininmum score (0-1): ")
+            maxthreshold = input("the maximum score (0-1): ")
+            input_1 = float(minthreshold)
+            input_2 = float(maxthreshold)
+            
+            onlythesepos = np.where(np.logical_and(
+                self.predictions[0]['scores'].to('cpu').detach().numpy()>input_1,
+                self.predictions[0]['scores'].to('cpu').detach().numpy()<input_2))
+
+        if evaluation_method == "2":
+            onlythesepos = []
+            
+            for i in range(len(self.predictions[0]['scores'])):
+                mks = self.predictions[0]['masks'].mul(255).byte().cpu().numpy()[i, 0].squeeze()
+                bb = self.predictions[0]['boxes'].cpu().detach().numpy()[i]
+                
+                
+                ion()
+                f = plot_segmenimages((imgtoplot).astype(np.uint8),
+                                      mks, 
+                        boxes=[bb.astype(np.uint16)], 
+                        bbtype = 'xminyminxmaxymax')
+                response = input("is this prediction [{} of {}] correct (1-yes ; 2-no; 3-exit): ".format(
+                    i+1,len(self.predictions[0]['scores'])))
+                f.show()
+                close()
+                if response == "1":
+                    onlythesepos.append(i)
+                if response == "3":
+                    break
+            
+        print(f"in total {len(self.predictions[0]['boxes'].cpu().detach().numpy()[onlythesepos])} segmentations are correct")
+        #print()
+        
+        msks = np.zeros((imgtoplot).astype(np.uint8).shape[:2])
+        msks_preds = self.predictions[0]['masks'].mul(255).byte().cpu().numpy()[onlythesepos, 0].squeeze()
+        bbs_preds = self.predictions[0]['boxes'].cpu().detach().numpy()[onlythesepos]
+        
+        if len(msks_preds.shape)>2:
+            if msks_preds.shape[0] == 0:
+                msks = np.zeros(self.inputsize)
+            else:
+                msks = np.max(msks_preds, axis = 0)
+        
+        ion()
+        f = plot_segmenimages((imgtoplot).astype(np.uint8),msks, 
+                        boxes=bbs_preds.astype(np.uint16), 
+                        bbtype = 'xminyminxmaxymax')
+        response = input("is this prediction correct (1-yes ; 2-no): ")
+        f.show()
+        close()
+        if response == "2":
+            trueresponse= True
+            
+            while trueresponse:
+                response = input("do you want to repeat (1-yes ; 2-no): ")
+                if response == "1":
+                    trueresponse = False
+                    self.evaluate_predictions_by_users()
+                elif response == "2":
+                    trueresponse = False
+                    msks_preds = np.zeros((imgtoplot).astype(np.uint8).shape[:2])
+                    bbs_preds = []
+                    self.msks = msks_preds
+                    self.bbs = bbs_preds
+                print("The option is not valid, try again")
+                
+        else:
+            if len(msks_preds.shape) == 2:
+                msks_preds = np.expand_dims(msks_preds, axis=0)
+            self.msks = msks_preds
+            self.bbs = bbs_preds
+        
+        imgsize = self._img.copy().shape[1:]
+            
+        #self._img = img
+        
+        #for i in range(len(self.msks)):
+        #    self.msks[i][self.msks[i]<segment_threshold] = 0
+        
+        self._original_size(imgsize)
+            
+        return {'masks': self.msks, 
+                'bbs':self.bbs, 
+                'scores':self.scores}
+        #return msks_preds, bbs_preds, imgtoplot
         
     @staticmethod
     def _get_heights_and_widths(maskcontours):
