@@ -1,5 +1,5 @@
 from .data_processing import data_standarization
-from .general import VEGETATION_INDEX
+from .general import MSVEGETATION_INDEX
 import re
 import numpy as np
 import pickle
@@ -25,8 +25,8 @@ def calculate_vi_fromarray(arraydata, variable_names,vi='ndvi', expression='(nir
         numpy array
     """
     
-    if expression is None and vi in list(VEGETATION_INDEX.keys()):
-        expression = VEGETATION_INDEX[vi]
+    if expression is None and vi in list(MSVEGETATION_INDEX.keys()):
+        expression = MSVEGETATION_INDEX[vi]
 
     # modify expresion finding varnames
     symbolstoremove = ['*','-','+','/',')','.','(',' ','[',']']
@@ -103,7 +103,7 @@ class SPArrayData(object):
         return inddata
     
     
-    def get_data(self, index, onlythesechannels = None, standarized = False):
+    def get_data(self, index, onlythesechannels = None, standarized = False, computevi = True):
         
         dataasarray = []
         data  = self.read_file(index)
@@ -111,15 +111,16 @@ class SPArrayData(object):
             channelstouse = [i for i in onlythesechannels if i in self.channelsnames]
         else:
             channelstouse = self.channelsnames
+            
         for chan in channelstouse:
             dataperchannel = self._get_channels_data(data,chan)
             dataasarray.append(dataperchannel)
             
-        if self.vi_list is not None and len(channelstouse)>1:
+        if self.vi_list is not None and len(channelstouse)>1 and computevi:
             for vi in self.vi_list:
                 vivalues, vilabel = calculate_vi_fromarray(dataasarray, 
-                                                           onlythesechannels, 
-                                                          vi, expression= VEGETATION_INDEX[vi])
+                                                           channelstouse, 
+                                                          vi, expression= MSVEGETATION_INDEX[vi])
                 dataasarray.append(vivalues)
                 channelstouse.append(vilabel)
         
