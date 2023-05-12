@@ -90,6 +90,12 @@ def get_data_from_dict(data, onlythesechannels = None):
 
 class SPArrayData(object):
     
+    @property
+    def channelsnames(self):  
+        data  = self.read_file(0)
+        return list(data['variables'].keys())
+            
+    
     #@staticmethod
     def read_file(self,index):
         with open(os.path.join(self.path, self.listfiles[index]), "rb") as fn:
@@ -102,35 +108,41 @@ class SPArrayData(object):
         inddata =  data['variables'][channel]    
         return inddata
     
+    def _computevi(self,dataasarray):
+        
+        if self.vi_list is not None:
+            for vi in self.vi_list:
+                vivalues, vilabel = calculate_vi_fromarray(dataasarray, 
+                                                           self._channelstouse, 
+                                                          vi, expression= MSVEGETATION_INDEX[vi])
+                dataasarray.append(vivalues)
+                self._channelstouse.append(vilabel)
+        
+        return dataasarray
     
     def get_data(self, index, onlythesechannels = None, standarized = False, computevi = True):
         
         dataasarray = []
         data  = self.read_file(index)
         if onlythesechannels is not None:
-            channelstouse = [i for i in onlythesechannels if i in self.channelsnames]
+            self._channelstouse = [i for i in onlythesechannels if i in self.channelsnames]
         else:
-            channelstouse = self.channelsnames
+            self._channelstouse = self.channelsnames
             
-        for chan in channelstouse:
+        for chan in self._channelstouse :
             dataperchannel = self._get_channels_data(data,chan)
             dataasarray.append(dataperchannel)
             
-        if self.vi_list is not None and len(channelstouse)>1 and computevi:
-            for vi in self.vi_list:
-                vivalues, vilabel = calculate_vi_fromarray(dataasarray, 
-                                                           channelstouse, 
-                                                          vi, expression= MSVEGETATION_INDEX[vi])
-                dataasarray.append(vivalues)
-                channelstouse.append(vilabel)
+        if computevi:
+            dataasarray = self._computevi(dataasarray)
         
         ## standarizization
-        for i in range(len(channelstouse)):
+        for i in range(len(self._channelstouse)):
             if self.scaler is not None:
-                if channelstouse[i] in list(self.scaler.keys()) and standarized:
+                if self._channelstouse [i] in list(self.scaler.keys()) and standarized:
                     dataasarray[i] = data_standarization(dataasarray[i], 
-                                                         self.scaler[channelstouse[i]][0], 
-                                                         self.scaler[channelstouse[i]][1])
+                                                         self.scaler[self._channelstouse [i]][0], 
+                                                         self.scaler[self._channelstouse [i]][1])
             
         return np.array(dataasarray)
 
@@ -153,11 +165,8 @@ class SPArrayData(object):
         self.scaler = dict_standarscaler
         self.vi_list = vi_list
         ## set defaultlistfeatures
-        if len(self.listfiles)>0:
-            data  = self.read_file(0)
-            self.channelsnames = list(data['variables'].keys())
-            
-        else:
+
+        if len(self.listfiles) == 0:
             raise ValueError("there are no files in {} with suffix {}".format(self.path, suffix))
         
         

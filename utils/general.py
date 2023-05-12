@@ -19,7 +19,12 @@ MSVEGETATION_INDEX = {# rgb bands
 'savi':  '((nir - red_ms) / (nir + red_ms + 0.5)) * (1.5)',
 'greenness': 'green_ms / (red_ms + green_ms + blue_ms)',
 'redness': 'red_ms / (red_ms + green_ms + blue_ms)',
-'blueness': 'blue_ms / (red_ms + green_ms + blue_ms)'}
+'blueness': 'blue_ms / (red_ms + green_ms + blue_ms)',
+'yellowness': '(green_ms - blue_ms)/(green_ms + blue_ms)',
+'yi_edge': '-1*(green_ms - 2*red_ms + edge)',
+#'yi': 'blue_ms - 2*green_ms + red_ms'
+
+}
 
 
 VEGETATION_INDEX = {# rgb bands

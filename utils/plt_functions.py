@@ -241,7 +241,8 @@ def plot_multichanels(data, num_rows = 2,
                      legtickssize = 15,
                      colorbar = True, vmin = None, vmax = None,
                      newlegendticks = None,
-                     fontname = "Arial"):
+                     fontname = "Arial",
+                     invertaxis = True):
     """
     create a figure showing one channel or multiple channels
     ----------
@@ -310,7 +311,8 @@ def plot_multichanels(data, num_rows = 2,
                 if num_rows>1 and num_columns > 1:
                     ax[j,i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
                     ax[j,i].set_title(vars[count], fontdict=fontmainfigure)
-                    ax[j,i].invert_xaxis()
+                    if invertaxis:
+                        ax[j,i].invert_xaxis()
                     ax[j,i].set_axis_off()
                 elif num_rows == 1 or num_columns == 1:
                     ax[i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
