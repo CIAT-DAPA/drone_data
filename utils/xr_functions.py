@@ -99,6 +99,8 @@ def stack_as4dxarray(xarraylist,
                      valuesaxis_names = None,
                      new_dimpos = 0,
                      resizeinter_method = 'nearest',
+                     long_dimname = 'x',
+                     lat_dimname = 'y',
                      **kwargs):
     """
     this function is used to stack multiple xarray along a time axis 
@@ -118,6 +120,10 @@ def stack_as4dxarray(xarraylist,
     resizeinter_method:
         which resize method will be used to interpolate the grid, this uses cv2
          ({"bilinear", "nearest", "bicubic"}, default: "nearest")
+        long_dimname: str, optional
+        name longitude axis, default = 'x'
+    lat_dimname: str, optional
+        name latitude axis, default = 'y'
     
     Return:
     ----------
@@ -127,7 +133,8 @@ def stack_as4dxarray(xarraylist,
     if type(xarraylist) is not list:
         raise ValueError('Only list xarray are allowed')
 
-    ydim, xdim = list(xarraylist[0].dims.keys())
+    ydim = [i for i in list(xarraylist[0].dims.keys()) if lat_dimname in i][0]
+    xdim = [i for i in list(xarraylist[0].dims.keys()) if long_dimname in i][0]
 
     coordsvals = [[xarraylist[i].dims[xdim],
                    xarraylist[i].dims[ydim]] for i in range(len(xarraylist))]

@@ -811,10 +811,11 @@ def resize_2dimg(image, newx, newy, flip=True, interpolation = 'bilinear', blur=
 def resize_3dxarray(xrdata, new_size, bands = None,
                     flip=True, 
                     interpolation = 'bilinear', 
-                    blur= True, kernelsize = (5,5)):
+                    blur= True, kernelsize = (5,5),
+                    long_dimname = 'x',
+                    lat_dimname = 'y'):
 
-    """
-    a functions to resize a 3 dimesional xrdata 
+    """a functions to resize a 3 dimesional xrdata 
 
     ----------
     Parameters
@@ -824,9 +825,13 @@ def resize_3dxarray(xrdata, new_size, bands = None,
         with new size in x and y
     flip: boolean, 
         flip the image
+    long_dimname: str, optional
+        name longitude axis, default = 'x'
+    lat_dimname: str, optional
+        name latitude axis, default = 'y'
     ----------
     Returns
-    xarray:
+    xarray
     """
     # TODO: create an image function for resize
 
@@ -837,7 +842,8 @@ def resize_3dxarray(xrdata, new_size, bands = None,
         varnames = bands
 
     dims2d = list(xrdata.dims)
-
+    ydim = [i for i in list(xrdata.dims.keys()) if lat_dimname in i][0]
+    xdim = [i for i in list(xrdata.dims.keys()) if long_dimname in i][0]
 
     listnpdata = []
 
@@ -851,8 +857,8 @@ def resize_3dxarray(xrdata, new_size, bands = None,
 
         listnpdata.append(imageres)
 
-    newyvalues = expand_1dcoords(xrdata[dims2d[0]].values, newy)
-    newxvalues = expand_1dcoords(xrdata[dims2d[1]].values, newx)
+    newyvalues = expand_1dcoords(xrdata[ydim].values, newy)
+    newxvalues = expand_1dcoords(xrdata[xdim].values, newx)
 
     newtr = transform_fromxy(newxvalues, newyvalues, [
         newxvalues[1] - newxvalues[0],
