@@ -177,11 +177,8 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
                     chanels_names = None,
                     figsize = [10,10], 
                     cmap = 'viridis', 
-                    fontsize=12,
-                    legfontsize = 15,
-                    legtickssize = 15,
-                    colorbar = True,
-                    minmaxscale = True):
+                    minmaxscale = True,
+                     **kwargs):
     
     """
     create a figure showing multiple xarray variables
@@ -225,9 +222,8 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
                       num_columns = num_columns, 
                       figsize = figsize, 
                       chanels_names = list(xrdata.keys()),
-                      cmap = cmap,fontsize=fontsize,
-                      colorbar = colorbar, legfontsize = legfontsize,
-                      legtickssize = legtickssize)
+                      cmap = cmap,
+                       **kwargs)
 
 import matplotlib.pyplot as plt
 
