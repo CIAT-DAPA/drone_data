@@ -5,7 +5,7 @@ import tqdm
 import pickle
 import xarray
 from shapely.geometry import Polygon
-import richdem as rd
+
 import rasterio
 import itertools
 import pandas as pd
@@ -207,8 +207,17 @@ def adding_newxarray(xarray_ref,
 
 
 def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees', name4d = 'date'):
-    """
-    Function to calculate terrain attributes from dem layer
+    import richdem as rd
+    
+    """Function to calculate terrain attributes from dem layer
+
+    xr_data: 
+    
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
     """
     if dem_varname not in list(xr_data.keys()):
         raise ValueError('there is not variable called {dem_varname} in the xarray')
@@ -245,19 +254,14 @@ def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees'
 
 
 def split_xarray_data(xr_data, polygons=True, **kargs):
-    """
-    Function to split the xarray data into tiles of x y y pixels
-    
-    :param xr_data: xarray data with x and y coordinates names
-    :param polygons: export polygons
-    :param kargs:
-         nrows:
-         ncols:
-         width:
-         height:
-        :param overlap: [0.0 - 1]
-        :return:
-    :return:
+    """Function to split the xarray data into tiles of x y y pixels
+
+    Args:
+        xr_data (xarray): data cube
+        polygons (bool, optional): return polygons. Defaults to True.
+
+    Returns:
+        list: list of tiles in xarray format and the spatial boundaries or polygons
     """
     xarrayall = xr_data.copy()
     m = get_tiles(xarrayall.attrs, **kargs)

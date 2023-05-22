@@ -31,13 +31,31 @@ def is_date(string, fuzzy=False):
     except ValueError:
         return False
 
-def find_date_instring(string, pattern = "202"):
-    
-    matches = re.finditer(pattern, string)
-    matches_positions = [string[match.start():match.start() +8] 
-                            for match in matches if is_date(string[match.start():match.start() +8])]
+def find_date_instring(string, pattern = "202", yearformat = 'yyyy'):
+    """find date pattern in a string
 
+    Args:
+        string (_type_): string
+        pattern (str, optional): date init. Defaults to "202".
+        yearformat (str, optional): the year format in the string 2021 is yyyy. Defaults to 'yyyy'.
+
+    Returns:
+        string: date in yyyymmdd format
+    """
+    matches = re.finditer(pattern, string)
+    
+    if yearformat == 'yyyy':
+        datelen = 8
+    else:
+        datelen = 6
+    
+    matches_positions = [string[match.start():match.start() +datelen] 
+                                for match in matches if is_date(string[match.start():match.start() +datelen])]
+    if len(matches_positions[0]) == 6:
+        matches_positions = ['20'+matches_positions[0]]
+    
     return matches_positions[0]
+
     
 def assign_valuestoimg(data, height, width, na_indexes=None):
     ids_notnan = np.arange(height *
