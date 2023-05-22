@@ -2,3 +2,4 @@ rasterio>=1.2.10
 xarray
 rioxarray>=0.8.0
 geopandas>=0.10.2
+pykrige
