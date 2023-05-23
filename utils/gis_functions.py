@@ -351,7 +351,7 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0,
         crs (crs): geograhical coordinate system
         nodata (int, optional): array value for non data. Defaults to 0.
         bands_names (list, optional): list of string with the channels names. Defaults to None.
-        dim_names (list, optional): list of dimension names. Defaults to None.
+        dimsformat (list, optional): multi dimensional order. Defaults to CHW.
 
     Returns:
         xarray dataset: dataset
@@ -363,6 +363,10 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0,
         if dimsformat == 'CHW':
             width = listraster[0].shape[1]
             height = listraster[0].shape[0]
+            dims = ['y','x']
+        if dimsformat == 'CWH':
+            width = listraster[0].shape[0]
+            height = listraster[0].shape[1]
             dims = ['y','x']
             
     if len(listraster[0].shape) == 3:

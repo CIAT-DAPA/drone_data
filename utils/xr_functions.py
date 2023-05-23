@@ -47,6 +47,11 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
                                 bands_names=varnames,
                                 dimsformat = dimsformat)
     
+    if 'date' in list(dictdata['dims'].keys()):
+        datar = datar.assign_coords(date=np.sort(
+            np.unique(dictdata['dims']['date'])))
+        
+        
     return datar
 
 class CustomXarray(object):
@@ -55,12 +60,12 @@ class CustomXarray(object):
     def _export_aspickle(self, path, fn, suffix = '.pickle') -> None:
 
         with open(fn, "wb") as f:
-            pickle.dump(self._filetoexport, f)
+            pickle.dump([self._filetoexport], f)
     
     @check_output_fn
     def _export_asjson(self, path, fn, suffix = '.json'):
         
-        json_object = json.dumps(self._filetoexport, cls = NpEncoder)
+        json_object = json.dumps(self._filetoexport, cls = NpEncoder, indent=4)
         with open(fn, "w") as outfile:
             outfile.write(json_object)
     
@@ -92,7 +97,9 @@ class CustomXarray(object):
             datadict['variables'][feature] = self.xrdata[feature].values
 
         for dim in self.xrdata.dims.keys():
-            datadict['dims'][dim] = np.unique(self.xrdata[dim])
+            if dim == 'date':
+                datadict['dims'][dim] = np.unique(self.xrdata[dim])
+            
         
         for attr in self.xrdata.attrs.keys():
             if attr == 'transform':
@@ -103,13 +110,14 @@ class CustomXarray(object):
         return datadict
     
 
-    def __init__(self, xarraydata= None, file = None, customdict = False) -> None:
+    def __init__(self, xarraydata= None, file = None, customdict = False, dataformat = 'DCHW') -> None:
         """initialize custom xarra
 
         Args:
             xarraydata (xarra dataset, optional): . Defaults to None.
             file (str, optional): pickle file path. Defaults to None.
             customdict (bool, optional): boolean to determine if the pickle file is a dictionary or a xarray
+            dataformat (list, optional): multi dimensional order. Defaults to DCHW.
         """
         if xarraydata:
             assert type(xarraydata) is xarray.Dataset
@@ -121,12 +129,12 @@ class CustomXarray(object):
                 data = pickle.load(f)
                 
             if customdict:
-                self.xrdata = from_dict_toxarray(data)
+                data = data[0]
+                self.xrdata = from_dict_toxarray(data, dimsformat = dataformat)
+                
             else:
                 self.xrdata = data
             
-                
-        
 
 
 def add_2dlayer_toxarrayr(xarraydata, variable_name,fn = None, imageasarray = None):
