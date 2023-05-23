@@ -17,35 +17,68 @@ from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,fin
 
 from .image_functions import radial_filter, remove_smallpixels
 from .gis_functions import list_tif_2xarray
+from .decorators import check_output_fn
+import json
 
 
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+    
+        
+def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
+    import affine
+        
+    trdata = dictdata['attributes']['transform']
+    crsdata = dictdata['attributes']['crs']
+    varnames = list(dictdata['variables'].keys())
+    listnpdata = [dictdata['variables'][i] for i in list(dictdata['variables'].keys())]
+
+    trd = affine.Affine(trdata[0],trdata[1],trdata[2],trdata[3],trdata[4],trdata[5])
+
+    datar = list_tif_2xarray(listnpdata, trd,
+                                crs=crsdata,
+                                bands_names=varnames,
+                                dimsformat = dimsformat)
+    
+    return datar
 
 class CustomXarray(object):
+    
+    @check_output_fn
+    def _export_aspickle(self, path, fn, suffix = '.pickle') -> None:
 
-    def _export_aspickle(self, path, fn, verbose = False) -> None:
-
-        if not os.path.exists(path):
-            os.mkdir(path)
-        
-        outfn = os.path.join(path,fn+'.pickle')
-        with open(outfn, "wb") as f:
+        with open(fn, "wb") as f:
             pickle.dump(self._filetoexport, f)
-
-        if verbose:
-            print('dat exported to {}'.format(outfn))
-
+    
+    @check_output_fn
+    def _export_asjson(self, path, fn, suffix = '.json'):
         
-    def export_as_dict(self, path, fn, **kwargs):
+        json_object = json.dumps(self._filetoexport, cls = NpEncoder)
+        with open(fn, "w") as outfile:
+            outfile.write(json_object)
+    
+          
+    def export_as_dict(self, path, fn, asjson = False,**kwargs):
 
         self._filetoexport = self.to_custom_dict()
-        self._export_aspickle(path, fn,**kwargs)
+        if asjson:
+            self._export_asjson(path, fn,suffix = '.json')
+            
+        else:
+            self._export_aspickle(path, fn,suffix = '.pickle', **kwargs)
 
-    def export_as_pickle(self, path, fn,**kwargs):
+    def export_as_xarray(self, path, fn,**kwargs):
 
         self._filetoexport = self.xrdata
         self._export_aspickle(path, fn,**kwargs)
-
-
+    
     def to_custom_dict(self):
 
         datadict = {
@@ -67,12 +100,33 @@ class CustomXarray(object):
             else:
                 datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
             
-
         return datadict
+    
 
-    def __init__(self, xarraydata) -> None:
+    def __init__(self, xarraydata= None, file = None, customdict = False) -> None:
+        """initialize custom xarra
+
+        Args:
+            xarraydata (xarra dataset, optional): . Defaults to None.
+            file (str, optional): pickle file path. Defaults to None.
+            customdict (bool, optional): boolean to determine if the pickle file is a dictionary or a xarray
+        """
+        if xarraydata:
+            assert type(xarraydata) is xarray.Dataset
+            self.xrdata = xarraydata
+            
+        elif file:
+            assert os.path.exists(file)
+            with open(file,"rb") as f:
+                data = pickle.load(f)
+                
+            if customdict:
+                self.xrdata = from_dict_toxarray(data)
+            else:
+                self.xrdata = data
+            
+                
         
-        self.xrdata = xarraydata
 
 
 def add_2dlayer_toxarrayr(xarraydata, variable_name,fn = None, imageasarray = None):

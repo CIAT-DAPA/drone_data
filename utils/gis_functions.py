@@ -314,35 +314,80 @@ def rasterize_using_bb(values, points_geometry, transform, imgsize):
                                out_shape=[imgsize[0], imgsize[1]], transform=transform))
 
 
+
 def coordinates_fromtransform(transform, imgsize):
-    """
-    Create a longitude, latitude meshgrid based on the spatial affine.
-    
+    """Create a longitude, latitude meshgrid based on the spatial affine.
+
+    Args:
+        transform (_type_): Affine matrix transformation
+        imgsize (_type_): height and width 
+
+    Returns:
+        _type_: _description_
     """
     # All rows and columns
-    cols, rows = np.meshgrid(np.arange(imgsize[0]), np.arange(imgsize[1]))
+    rows, cols = np.meshgrid(np.arange(imgsize[0]), np.arange(imgsize[1]))
 
     # Get affine transform for pixel centres
-    T1 = transform * Affine.translation(0.5, 0.5)
+    T1 = transform * Affine.translation(0, 0)
     # Function to convert pixel row/column index (from 0) to easting/northing at centre
-    rc2en = lambda r, c: (c, r) * T1
+    rc2en = lambda r, c: T1 *(c, r) 
 
     # All east and north (there is probably a faster way to do this)
-    eastings, northings = np.vectorize(rc2en,
+    rows, cols = np.vectorize(rc2en,
                                        otypes=[np.float64,
                                                np.float64])(rows, cols)
-    return [eastings, northings]
+    return [cols, rows]
 
 
-def list_tif_2xarray(listraster, transform, crs, nodata=0, bands_names=None):
+def list_tif_2xarray(listraster, transform, crs, nodata=0, 
+                     bands_names=None, 
+                     dimsformat = 'CHW'):
+    """tranform a list of np arrays to a xarray
+
+    Args:
+        listraster (list): list of numpy arrays of 3D or 4D dimensions
+        transform (Affine): affine transformation matrix
+        crs (crs): geograhical coordinate system
+        nodata (int, optional): array value for non data. Defaults to 0.
+        bands_names (list, optional): list of string with the channels names. Defaults to None.
+        dim_names (list, optional): list of dimension names. Defaults to None.
+
+    Returns:
+        xarray dataset: dataset
     """
-    This function transform raster layers to an xarray data
-    """
+    
+    assert len(listraster)>0
+    
+    if len(listraster[0].shape) == 2:            
+        if dimsformat == 'CHW':
+            width = listraster[0].shape[1]
+            height = listraster[0].shape[0]
+            dims = ['y','x']
+            
+    if len(listraster[0].shape) == 3:
+        
+        ##TODO: allow multiple formats
+        if dimsformat == 'DCHW':
+            width = listraster[0].shape[2]
+            height = listraster[0].shape[1]
+            dims = ['date','y','x']
+            
+        if dimsformat == 'CHWD':
+            width = listraster[0].shape[1]
+            height = listraster[0].shape[0]
+            dims = ['y','x','date']
+
+    dim_names = {'dim_{}'.format(i):dims[i] for i in range(len(listraster[0].shape))}
+    
+           
     metadata = {
         'transform': transform,
         'crs': crs,
-        'width': listraster[0].shape[1],
-        'height': listraster[0].shape[0]
+        'width': width,
+        'height': height,
+        'count': len(listraster)
+        
     }
     if bands_names is None:
         bands_names = ['band_{}'.format(i) for i in range(len(listraster))]
@@ -364,10 +409,12 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0, bands_names=None):
     multi_xarray.attrs = metadata
 
     # assign coordinates
-
-    x, y = coordinates_fromtransform(transform,
-                                     [listraster[0].shape[1], listraster[0].shape[0]])
-    multi_xarray = multi_xarray.rename({'dim_0': 'y', 'dim_1': 'x'})
+    
+    y,x = coordinates_fromtransform(transform,
+                                     [height, width])
+    
+   
+    multi_xarray = multi_xarray.rename(dim_names)
 
     multi_xarray = multi_xarray.assign_coords(x=np.sort(np.unique(x)))
     multi_xarray = multi_xarray.assign_coords(y=np.sort(np.unique(y)))
