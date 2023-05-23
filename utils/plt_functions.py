@@ -628,10 +628,13 @@ def plot_heights(xrdata, num_rows = 2,
                      vmin = None,
                      vmax = None,
                      reduction_perc = None,
+                     yfontize = 18,
                     fontname = 'Helvetica'):
-    """
-    create a figure showing a 2d profile from a 3d image reconstruction
+    
+    """create a figure showing a 2d profile from a 3d image reconstruction
     ----------
+    Params:
+    
     xrdata : xarray data
     num_rows : int, optional
         set number of rows
@@ -655,8 +658,9 @@ def plot_heights(xrdata, num_rows = 2,
         decimal [0-1] determines the quantile for the height reference
 
     Returns
+    matplotlib figure
     -------
-    """    
+    """  
     if chanels_names is None:
         chanels_names = [np.datetime_as_string(i, unit='D') for i in xrdata.date.values ]
 
@@ -705,13 +709,15 @@ def plot_heights(xrdata, num_rows = 2,
                     ax[j,i] = adding_phfigure(altref, indcolors, xaxisref, 
                                               yphreference, vars[count], 
                                               fontsize, vmin, vmax, vmaxl, ax = ax[j,i],
-                                              hmin = hmin, hmax = hmax, fontname =fontname)
+                                              hmin = hmin, hmax = hmax, fontname =fontname,
+                                              yfontize= yfontize)
                     
                 else:
                     ax[i] = adding_phfigure(altref, indcolors, xaxisref, 
                                             yphreference, vars[count], 
                                             fontsize, vmin, vmax, vmaxl, ax = ax[i],
-                                            hmin = hmin, hmax = hmax, fontname =fontname)
+                                            hmin = hmin, hmax = hmax, fontname =fontname,
+                                            yfontize= yfontize)
 
                 count +=1
             else:
