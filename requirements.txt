@@ -3,3 +3,8 @@ xarray
 rioxarray>=0.8.0
 geopandas>=0.10.2
 pykrige
+tqdm
+Pillow
+opencv-python
+scikit-image
+scikit-learn
