@@ -435,7 +435,7 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
         mtdata = mtdata.swapaxes(0,1)
         
     if datelabes is None:
-        datelabes = ['']*arraydata.shape[0]
+        datelabes = ['']*mtdata.shape[0]
         
         
     for xi in range(nrows):
