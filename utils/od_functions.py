@@ -583,66 +583,6 @@ def from_yolo_toxy(yolo_style, size):
 
     return (l, r, t, b)
 
-"""
-
-DEPRECATED
-def xyxy_predicted_box(img, yolo_model, device, half = False,
-                       conf_thres=0.5,
-                       iou_thres=0.45,
-                       classes=None,
-                       agnostic_nms=False,
-                       max_det=1000):
-
-    imgc = img.copy()
-    if img.shape[0] != 3:
-        img = img.swapaxes(2,1).swapaxes(1,0)
-    
-    img = torch.from_numpy(img).to(device)
-
-    img = img.half() if half else img.float()
-    img /= 255.0
-    if len(img.shape) == 3:
-        img = img[None]
-    
-    pred = yolo_model(img, augment=False)[0]
-    pred = non_max_suppression(pred, conf_thres, iou_thres, classes,
-                               agnostic_nms, max_det=max_det)
-
-    
-    xyxylist = []
-    yolocoords = []
-    if imgc.shape[0] == 3:
-        img0 = imgc.swapaxes(0,1).swapaxes(1,2)
-    else:
-        img0 = imgc
-    
-    for i, det in enumerate(pred):
-        s, im0 = '', img0
-        gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]
-        print(img.shape[2:])
-        if len(det):
-            print(det[:, :4])
-            #det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-            det[:, :4] = scale_boxes(img.shape[2:], det[:, :4], im0.shape).round()
-            print(det)
-            for *xyxy, conf, cls in det:
-                # Rescale boxes from img_size to im0 size
-                xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
-                xyxylist.append([torch.tensor(xyxy).tolist(), xywh, conf.tolist()])
-                m = [0]
-                for i in range(len(xywh)):
-                    m.append(xywh[i])
-                    
-                l, r, t, b = from_yolo_toxy(m, (im0.shape[0],
-                                            im0.shape[1]))
-
-                yolocoords.append([l, r, t, b])
-
-    return xyxylist,yolocoords
-
-
-"""
-
 def odboxes_per_xarray(xarraydata, yolo_model, device, half,
                        conf_thres=0.70, img_size=512, min_size=128,
                        bands=['red', 'green', 'blue']):

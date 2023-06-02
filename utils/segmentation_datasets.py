@@ -18,6 +18,7 @@ from Crop_DL.crop_dl.dataset_utils import get_boundingboxfromseg
 from .drone_data import DroneData
 from .data_processing import from_xarray_2array
 from .gis_functions import merging_overlaped_polygons
+from .multipolygons_functions import IndividualUAVData
 
 def get_clossest_prediction(image_center, bb_predictions, distance_limit = 30):
     distpos = None
@@ -590,3 +591,70 @@ class SegmentationUAVData(DroneData):
     def _find_contours(image, hull = False):
         
         return find_contours(image, hull = hull)
+
+
+
+### 
+class UAVSegmentation(object):
+    
+    def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'], **kwargs):
+        
+        img = self.xrimage[channels].to_array().values
+        mask[mask<threshold] = 0
+        
+        f = plot_segmenimages((img.swapaxes(0,1).swapaxes(1,2)
+                        ).astype(np.uint8),mask[0][0],**kwargs)
+        
+        return f
+    
+    def segment_image_usingbb(self,bbid, channels = ['blue','green', 'red']):
+        
+        assert len(channels) == 3 # it must be an bgr combination
+        msks = None
+        self.get_stacked_image(bbid)
+        
+        if self.xrimage is not None:
+            img = self.xrimage[channels].to_array().values
+            msks = self.get_mask(img, keepdims=True)
+        
+        
+        return msks
+    
+    def get_stacked_image(self, bbid):
+        
+        assert bbid<self.sp_df.shape[0]
+        
+        spatial_boundaries = self.sp_df.iloc[bbid:bbid+1]
+        if spatial_boundaries.shape[0]>0:
+            
+            uavdata = IndividualUAVData(self.rgb_input, 
+                                    self.ms_input, 
+                                    self.threed_input, 
+                                    spatial_boundaries, 
+                                    self.rgb_bands, self.ms_bands, 
+                                    self._buffer)
+            
+            uavdata.rgb_uavdata()
+            uavdata.ms_uavdata()
+            uavdata.stack_uav_data(bufferdef = self.buffer, 
+                rgb_asreference = True,resample_method = 'nearest')
+            
+            self.xrimage = uavdata.uav_sources['stacked']
+        else:
+            self.xrimage = None
+
+    def __init__(self, rgb_input=None, ms_input=None, threed_input=None, df_boundaries_fn=None, 
+                 rgb_bands=None, ms_bands=None, buffer_preprocess=0.6, buffer = 0,architecture = "Unet256"):
+        
+        assert type(df_boundaries_fn) == str
+        self.sp_df = gpd.read_file(df_boundaries_fn)
+        
+        self.rgb_input = rgb_input
+        self.ms_input = ms_input
+        self.threed_input = threed_input
+        self.rgb_bands = rgb_bands
+        self.ms_bands = ms_bands
+        self._buffer = buffer_preprocess
+        self.buffer = buffer
+        
+        super().__init__(architecture=architecture)
