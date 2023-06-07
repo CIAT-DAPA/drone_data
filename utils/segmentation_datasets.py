@@ -1,14 +1,22 @@
 from Crop_DL.crop_dl.seeds.utils import getmidleheightcoordinates, euclidean_distance, getmidlewidthcoordinates
 from Crop_DL.crop_dl.image_functions import contours_from_image, pad_images
 from Crop_DL.crop_dl.plt_utils import plot_segmenimages, random_colors, add_frame_label
+from Crop_DL.crop_dl.decorators import check_output_fn, check_image_size
 from Crop_DL.crop_dl.models.utils import image_to_tensor
+from Crop_DL.crop_dl.models.dl_architectures import Unet256
 import copy
 import geopandas as gpd
 import pandas as pd
 import math
 
+
+import collections
+
+
 import xarray
 import torch
+import torch.optim as optim
+
 import cv2
 import numpy as np
 import tqdm
@@ -18,6 +26,9 @@ from Crop_DL.crop_dl.dataset_utils import get_boundingboxfromseg
 from .drone_data import DroneData
 from .data_processing import from_xarray_2array
 from .gis_functions import merging_overlaped_polygons
+from .multipolygons_functions import IndividualUAVData
+from .xr_functions import add_2dlayer_toxarrayr
+
 
 def get_clossest_prediction(image_center, bb_predictions, distance_limit = 30):
     distpos = None
@@ -182,8 +193,13 @@ def get_height_width(grayimg, pixelsize = 1):
     
     return larger* pixelsize, shorter*pixelsize
 
-
+### isntance segmentation
 class SegmentationUAVData(DroneData):
+    """Apply instance segmentation models on UAV data
+
+    Args:
+        DroneData (_type_): _description_
+    """
     
     
     def __init__(self,
@@ -590,3 +606,159 @@ class SegmentationUAVData(DroneData):
     def _find_contours(image, hull = False):
         
         return find_contours(image, hull = hull)
+
+
+
+### 
+
+
+class SegmentationPrediction():
+    
+    @check_output_fn
+    def load_weights(self, path, fn, suffix = 'pth.tar'):
+        
+        checkpoint = torch.load(fn, map_location=self.device)
+        self.model.load_state_dict(checkpoint["state_dict"])
+        self.opt.load_state_dict(checkpoint["optimizer"])
+        print("weights loaded")
+    
+    def _original_size(self):
+        msksc = [0]* len(list(self.msks))
+        
+        for i in range(len(self.msks)):
+            msksc[i] = cv2.resize(self.msks[i][0], 
+                                  [self.img.shape[2],self.img.shape[1]], 
+                                  interpolation = cv2.INTER_AREA)  
+       
+        self.msks = np.array(np.expand_dims(msksc, axis =0))
+        
+    def get_mask(self, image, keepdims = True):
+        
+        self.imgtensor = image_to_tensor(image=image, outputsize = self.inputimgsize)
+        self.img = image
+        
+        self.model.eval()
+        with torch.no_grad():
+            msks = self.model(torch.stack([self.imgtensor.to(self.device)]))
+            
+        if type(msks) is collections.OrderedDict:
+            #self.msks = self.msks['out']
+            self.msks =msks['out'].mul(255).byte().cpu().numpy()
+        else:
+            self.msks = msks.mul(255).byte().cpu().numpy()
+        
+        if keepdims:
+            self._original_size()
+        
+        return self.msks
+
+    def set_model(self):
+        
+        if self.arch == "Unet256":
+            model = Unet256(in_channels=3, out_channels=1)
+        
+        return model.to(self.device)
+    
+    def __init__(self, architecture = "Unet256", configuration = {'lr':2e-4,
+                                                                  'beta': (0.5, 0.999)}, device = None) -> None:
+        
+        if device is None:
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+            
+        self.arch = architecture
+        self.model = self.set_model()
+        self.inputimgsize = (256, 256)
+        self.opt = optim.Adam(self.model.parameters(), 
+                      lr=configuration['lr'], betas=configuration['beta'])
+
+class UAVSegmentation(SegmentationPrediction):
+    
+    def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'], **kwargs):
+        
+        img = self.xrimage[channels].to_array().values
+        mask[mask<threshold] = 0
+        
+        f = plot_segmenimages((img.swapaxes(0,1).swapaxes(1,2)
+                        ).astype(np.uint8),mask[0][0],**kwargs)
+        
+        return f
+    
+    def segment_image_usingbb(self,bbid = None, channels = ['blue','green', 'red'], idmatch = None, idcolumn = None):
+        
+        assert len(channels) == 3 # it must be an bgr combination
+        msks = None
+        self.get_stacked_image(bbid= bbid , idmatch = idmatch, idcolumn = idcolumn)
+        
+        if self.xrimage is not None:
+            img = self.xrimage[channels].to_array().values
+            msks = self.get_mask(img, keepdims=True)        
+        
+        return msks
+    
+    def get_stacked_image(self, bbid = None, idmatch = None, idcolumn = None):
+        
+        assert bbid<self.sp_df.shape[0]
+        
+        if idmatch is not None and idcolumn is not None:
+            spatial_boundaries = self.sp_df.loc[self.sp_df[idcolumn] == idmatch]
+        else:
+            spatial_boundaries = self.sp_df.iloc[bbid:bbid+1]
+            
+        if spatial_boundaries.shape[0]>0:
+            
+            uavdata = IndividualUAVData(self.rgb_input, 
+                                    self.ms_input, 
+                                    self.threed_input, 
+                                    spatial_boundaries, 
+                                    self.rgb_bands, self.ms_bands, 
+                                    self._buffer)
+            
+            uavdata.rgb_uavdata()
+            uavdata.ms_uavdata()
+            uavdata.stack_uav_data(bufferdef = self.buffer, 
+                rgb_asreference = True,resample_method = 'nearest')
+            
+            self.xrimage = uavdata.uav_sources['stacked']
+        else:
+            self.xrimage = None
+            
+    def add_mask_xrdata(self, mask, variable_name=None):
+        
+        if variable_name is None:
+            variable_name = 'mask_{}'.format(len(list(self.xrimage.keys())))
+        
+        mask = np.squeeze(mask)
+        if np.max(mask) > 200:
+            mask =mask/255.
+        
+        if self.xrimage is None:
+            print('please_make the prediciton first')
+            
+        if mask.shape[0] != len(self.xrimage['x'].values) or mask.shape[1] != len(self.xrimage['y'].values):
+             mask = mask.swapaxes(0,1)
+        
+        self.xrimage = add_2dlayer_toxarrayr(self.xrimage, 
+                              variable_name=variable_name, 
+                              imageasarray=mask )
+        
+        return self.xrimage
+        
+
+    def __init__(self, rgb_input=None, ms_input=None, threed_input=None, df_boundaries_fn=None, 
+                 rgb_bands=None, ms_bands=None, buffer_preprocess=0.6, buffer = 0,architecture = "Unet256"):
+        
+        assert type(df_boundaries_fn) == str
+        self.sp_df = gpd.read_file(df_boundaries_fn)
+        self.xrimage = None
+        
+        self.rgb_input = rgb_input
+        self.ms_input = ms_input
+        self.threed_input = threed_input
+        self.rgb_bands = rgb_bands
+        self.ms_bands = ms_bands
+        self._buffer = buffer_preprocess
+        self.buffer = buffer
+        
+        super().__init__(architecture=architecture)

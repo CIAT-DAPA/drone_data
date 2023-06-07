@@ -477,6 +477,14 @@ def check_border(coord, sz):
     return coord
 
 def from_polygon_2bbox(pol):
+    """get min and max coordinates values from a Polygon geometry
+
+    Args:
+        pol (Polygon): geometry
+
+    Returns:
+        list: (xmin, ymin, xmax, ymax)
+    """
     points = list(pol.exterior.coords)
     x_coordinates, y_coordinates = zip(*points)
 
@@ -484,6 +492,17 @@ def from_polygon_2bbox(pol):
 
 
 def from_xyxy_2polygon(x1, y1, x2, y2):
+    """transform a coordinates to a Polygon geometry
+
+    Args:
+        x1 (int): left or x mininimun coordinate
+        y1 (int): top or y min coordinate
+        x2 (int): right or x max coordinate
+        y2 (int): bottom or y max coordinate
+
+    Returns:
+        Polygon: geometry
+    """
     xpol = [x1, x2,
             x2, x1,
             x1]
@@ -495,6 +514,15 @@ def from_xyxy_2polygon(x1, y1, x2, y2):
 
 
 def from_bbxarray_2polygon(bb, xarrayimg):
+    """Create a Polygon geometry using the left, top, right and bottom coordiante values of ht eboundary box
+
+    Args:
+        bb (_type_): boundary box list values (left, top, right and bottom)
+        xarrayimg (xarray): xarray image attributes
+
+    Returns:
+        Polygon: geometry
+    """
     # pixel_size = imgsdata[id_img].attrs['transform'][0]
     imgsz = xarrayimg.attrs['width']
     xcoords = xarrayimg.coords['x'].values
@@ -506,7 +534,9 @@ def from_bbxarray_2polygon(bb, xarrayimg):
         listcoords.append(check_border(i, imgsz))
 
     x1, y1, x2, y2 = listcoords
-
+    x2 = len(xcoords)-1 if x2 >= len(xcoords) else x2
+    y2 = len(ycoords)-1 if y2 >= len(ycoords) else y2
+    
     return from_xyxy_2polygon(xcoords[int(x1)], ycoords[int(y1)],
                               xcoords[int(x2)], ycoords[int(y2)])
 

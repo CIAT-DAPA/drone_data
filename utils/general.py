@@ -1,4 +1,4 @@
-
+import math
 
 
 
@@ -42,3 +42,26 @@ VEGETATION_INDEX = {# rgb bands
 
 
 
+
+def find_postinlist(listvalues, refvalue):
+    """find the position of value in a list
+
+    Args:
+        listvalues (list): list of values in where the search is gonna be take
+        refvalue (float): which value is gonna be look for in the list
+
+    Returns:
+        int: position in the list
+    """
+    listvalues.sort()
+    posinlist = [i for i in range(len(listvalues)-1) if refvalue <= listvalues[i+1] and refvalue >= listvalues[i]]
+    if len(posinlist)==0:
+        posinlist = None
+    else:
+        posinlist = posinlist[0]
+    return posinlist
+
+
+def euclidean_distance(p1,p2):
+    return math.sqrt(
+        math.pow(p1[0] - p2[0],2) + math.pow(p1[1] - p2[1],2))

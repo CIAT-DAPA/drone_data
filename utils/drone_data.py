@@ -7,6 +7,7 @@ from rasterio.windows import from_bounds
 import rioxarray as rio
 import os
 import glob
+from PIL import Image
 
 from . import data_processing
 from .plt_functions import plot_multibands_fromxarray
@@ -120,6 +121,7 @@ def multiband_totiff(xrdata, filename, varnames=None):
         fn = "{}{}.tif".format(filename[:(suffix - 1)], "_".join(varnames))
         xrdata.rio.to_raster(fn)
 
+### TODO: create a class that integrate all plots
 class UAVPlots():
     pass
 
@@ -370,7 +372,29 @@ class DroneData:
         ax.set_axis_off()
         plt.show()
 
+    def to_rgbjpg(self, fn, channels = ['red','green','blue'], newshape = None):
+        """_summary_
 
+        Args:
+            fn (str): file path
+            channels (list, optional): RGB channels names. Defaults to ['red','green','blue'].
+            newshape (list, optional): export the image in with a specific size. Default None
+        """
+         
+        fn = fn if fn.endswith('.jpg') else fn+'.jpg'
+        
+        imgdrs = self.drone_data[channels].to_array().values.copy()
+        imgpil = Image.fromarray(np.rollaxis(imgdrs, 0,3).astype(np.uint8))
+        
+        
+        if newshape is not None:
+            assert len(newshape) == 2
+            imgpil = imgpil.resize(newshape)
+        
+        imgpil.save(fn)
+            
+            
+        
     def to_tiff(self, filename, channels='all',multistack = False):
         """
         Using this function the drone data will be saved as a tiff element in a given 
