@@ -148,13 +148,29 @@ def check_boundarytype(boundsvariable):
 class DroneData:
     """
     Handles UAV images using xarray package.
-    Attributes
+    
+        Attributes
     ----------
     drone_data : xarray
         UAV image in xarray format.
     variable_names : list str
         Spectral bands that compose the uav iamge.
     
+
+        Methods
+    -------
+    _checkbandstoexport(bands)
+        Internal method to validate and filter bands for export.
+    add_layer(variable_name, fn=None, imageasarray=None)
+        Add a 2D layer to the drone data.
+    data_astable()
+        Convert the drone data to a pandas DataFrame.
+    calculate_vi(vi='ndvi', expression=None, label=None)
+        Calculate vegetation indices using predefined or custom equations.
+    rf_classification(model, features=None)
+        Perform random forest classification on the drone data.
+    clusters(nclusters=2, method="kmeans", p_sample=10, pcavariance=0.5)
+        Perform clustering on the drone data.
 
     """
 
