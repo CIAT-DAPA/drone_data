@@ -296,7 +296,8 @@ MS_BANDS = ['blue', 'green', 'red', 'edge', 'nir']
 
 class IndividualUAVData(object):
     """
-    A class to concatenate multiple sourcing data
+    A class to concatenate multiple uav orthomosiac sourcing data
+    using a spatial vector file
     """
     
 
@@ -383,7 +384,8 @@ class IndividualUAVData(object):
             if os.path.exists(self.threed_input):
                 buffertmp = self._boundaries_buffer.copy().reset_index(),
                 buffertmp = buffertmp[0] if type(buffertmp) == tuple else buffertmp
-                #buffertmp = buffertmp.rename(columns={0:'geometry'})
+                if 0 in buffertmp.columns:
+                    buffertmp = buffertmp.rename(columns={0:'geometry'})
                 
                 pcloud_data = CloudPoints(self.threed_input,
                                 #gpdpolygon= self.spatial_boundaries.copy(), 
@@ -424,3 +426,70 @@ class IndividualUAVData(object):
         self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
 
 
+##
+import tqdm
+import random
+import itertools
+
+def extract_random_samples_from_drone(imagepath, geometries, bands = None, multiband = True, buffer = 0, samples = 500):
+    """extract sample polygons data from UAV
+
+    Args:
+        imagepath (_type_): _description_
+        geometries (_type_): _description_
+        bands (_type_, optional): _description_. Defaults to None.
+        multiband (bool, optional): _description_. Defaults to True.
+        buffer (int, optional): _description_. Defaults to 0.
+        samples (int, optional): _description_. Defaults to 500.
+
+    Returns:
+        _type_: _description_
+    """
+    dictdata = {}
+    first = True
+    for j in tqdm.tqdm(random.sample(range(geometries.shape[0]), samples)):
+        try:
+            
+            drdata = DroneData(imagepath,    multiband_image= multiband, bounds= geometries.iloc[j:j+1].buffer(buffer, join_style=2),bands = bands)
+
+            xrdata = drdata.drone_data.copy()
+
+            for i, feature in enumerate(bands):
+                data = xrdata[feature].values
+                data[data == 0] = np.nan
+                if first:
+                    valtosave = list(itertools.chain.from_iterable(data))
+                else:
+                    valtosave = dictdata[feature] + list(itertools.chain.from_iterable(data))
+                
+                dictdata[feature] = valtosave
+            first = False
+        except:
+            pass
+    
+    return dictdata
+
+
+def summary_data(data):
+    summary = {}
+    alldata = []
+    for feature in list(data.keys()):
+        datafe = data[feature]
+        meanstd = [np.nanmean(datafe),
+                    np.nanstd(datafe)]
+        minmax = [np.nanmin(datafe),
+                    np.nanmax(datafe)]
+        alldata.append(datafe)
+        summary[feature] = {'normalization':minmax,
+                            'standarization':meanstd}
+
+    alldata = np.array(list(itertools.chain.from_iterable(alldata)))
+    minmax = [np.nanmin(alldata),
+            np.nanmax(alldata)]
+    meanstd = [np.nanmean(alldata),
+            np.nanstd(alldata)]
+    
+    summary.update({'normalization':minmax,
+                    'standarization':meanstd})
+
+    return summary
