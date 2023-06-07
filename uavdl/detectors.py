@@ -3,12 +3,18 @@ import torch
 
 from ..utils.drone_data import DroneData
 from ..utils.gis_functions import from_bbxarray_2polygon, merging_overlaped_polygons
+from ..utils.multipolygons_functions import IndividualUAVData
+from ..utils.xr_functions import add_2dlayer_toxarrayr
+from ..utils.segmentation_datasets import SegmentationPrediction
 
-from .plt_utils import draw_frame
+
+from .plt_utils import draw_frame, plot_segmenimages
 import geopandas as gpd
 import pandas as pd
 import numpy as np
 import tqdm
+import collections
+import torch.optim as optim
 
 class DroneObjectDetection(DroneData):
     
@@ -160,3 +166,97 @@ class DroneObjectDetection(DroneData):
         self.device = device
         self.model = yolo_model
         
+
+#### segmentation
+
+
+        
+class UAVSegmentation(SegmentationPrediction):
+    
+    def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'], **kwargs):
+        
+        img = self.xrimage[channels].to_array().values
+        mask[mask<threshold] = 0
+        
+        f = plot_segmenimages((img.swapaxes(0,1).swapaxes(1,2)
+                        ).astype(np.uint8),mask[0][0],**kwargs)
+        
+        return f
+    
+    def segment_image_usingbb(self,bbid = None, channels = ['blue','green', 'red'], idmatch = None, idcolumn = None):
+        
+        assert len(channels) == 3 # it must be an bgr combination
+        msks = None
+        self.get_stacked_image(bbid= bbid , idmatch = idmatch, idcolumn = idcolumn)
+        
+        if self.xrimage is not None:
+            img = self.xrimage[channels].to_array().values
+            msks = self.get_mask(img, keepdims=True)        
+        
+        return msks
+    
+    def get_stacked_image(self, bbid = None, idmatch = None, idcolumn = None):
+        
+        assert bbid<self.sp_df.shape[0]
+        
+        if idmatch is not None and idcolumn is not None:
+            spatial_boundaries = self.sp_df.loc[self.sp_df[idcolumn] == idmatch]
+        else:
+            spatial_boundaries = self.sp_df.iloc[bbid:bbid+1]
+            
+        if spatial_boundaries.shape[0]>0:
+            
+            uavdata = IndividualUAVData(self.rgb_input, 
+                                    self.ms_input, 
+                                    self.threed_input, 
+                                    spatial_boundaries, 
+                                    self.rgb_bands, self.ms_bands, 
+                                    self._buffer)
+            
+            uavdata.rgb_uavdata()
+            uavdata.ms_uavdata()
+            uavdata.stack_uav_data(bufferdef = self.buffer, 
+                rgb_asreference = True,resample_method = 'nearest')
+            
+            self.xrimage = uavdata.uav_sources['stacked']
+        else:
+            self.xrimage = None
+            
+    def add_mask_xrdata(self, mask, variable_name=None):
+        
+        if variable_name is None:
+            variable_name = 'mask_{}'.format(len(list(self.xrimage.keys())))
+        
+        mask = np.squeeze(mask)
+        if np.max(mask) > 200:
+            mask =mask/255.
+        
+        if self.xrimage is None:
+            print('please_make the prediciton first')
+            
+        if mask.shape[0] != len(self.xrimage['x'].values) or mask.shape[1] != len(self.xrimage['y'].values):
+             mask = mask.swapaxes(0,1)
+        
+        self.xrimage = add_2dlayer_toxarrayr(self.xrimage, 
+                              variable_name=variable_name, 
+                              imageasarray=mask )
+        
+        return self.xrimage
+        
+
+    def __init__(self, rgb_input=None, ms_input=None, threed_input=None, df_boundaries_fn=None, 
+                 rgb_bands=None, ms_bands=None, buffer_preprocess=0.6, buffer = 0,architecture = "Unet256"):
+        
+        assert type(df_boundaries_fn) == str
+        self.sp_df = gpd.read_file(df_boundaries_fn)
+        self.xrimage = None
+        
+        self.rgb_input = rgb_input
+        self.ms_input = ms_input
+        self.threed_input = threed_input
+        self.rgb_bands = rgb_bands
+        self.ms_bands = ms_bands
+        self._buffer = buffer_preprocess
+        self.buffer = buffer
+        
+        super().__init__(architecture=architecture)

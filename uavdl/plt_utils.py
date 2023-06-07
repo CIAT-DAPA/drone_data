@@ -1,4 +1,6 @@
 import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 
 def draw_frame(img, bbbox, dictlabels = None, default_color = (255,255,255)):
     imgc = img.copy()
@@ -29,4 +31,41 @@ def draw_frame(img, bbbox, dictlabels = None, default_color = (255,255,255)):
                                                             ytxt - int(abs(y1-y2)/20)), 
                                                             fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1*((heighty)/200), color=(255,255,255), thickness=2)
             
-    return imgc   
+    return imgc
+
+
+def plot_segmenimages(img, maskimg, boxes = None, figsize = (10, 8), 
+                      bbtype = None, only_image = False, inverrgbtorder = True,**kwargs):
+    
+    datato = img.copy()
+    heatmap = cv2.applyColorMap(np.array(maskimg).astype(np.uint8), 
+                                cv2.COLORMAP_PLASMA)
+    
+    output = cv2.addWeighted(datato, 0.5, heatmap, 1 - 0.75, 0)
+    if boxes is not None:
+        output = draw_frame(output, boxes, bbtype = bbtype, **kwargs)
+    
+    if only_image:
+        fig = output
+    else:
+        
+        # plot the images in the batch, along with predicted and true labels
+        fig, ax = plt.subplots(nrows = 1, ncols = 3,figsize=figsize)
+        #ax = fig.add_subplot(1, fakeimg.shape[0], idx+1, xticks=[], yticks=[])
+        #fig, ax = plt.subplots(ncols = 3, nrows = 1, figsize = (14,5))
+        #.swapaxes(0,1).swapaxes(1,2).astype(np.uint8)
+        if inverrgbtorder:
+            order = [2,1,0]
+        else:
+            order = [0,1,2]
+            
+        ax[0].imshow(datato[:,:,order],vmin=0,vmax=1)
+        ax[0].set_title('Real',fontsize = 18)
+        ax[1].imshow(maskimg,vmin=0,vmax=1)
+        ax[1].set_title('Segmentation',fontsize = 18)
+
+        ax[2].set_title('Overlap',fontsize = 18)
+        ax[2].imshow(output[:,:,order])
+            
+        
+    return fig
