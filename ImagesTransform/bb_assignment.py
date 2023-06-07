@@ -172,8 +172,13 @@ class LabelData:
 
                 lines = None
                 datatxt = None
+
+                #print(imgfn in fn)
                 if imgfn in fn:
                     datatxt = fnorig[fn.index(imgfn)]
+                if imgfn+'.jpg' in fn:
+                    datatxt = fnorig[fn.index(imgfn+'.jpg')]
+                if datatxt is not None:   
                     with open(datatxt, 'rb') as src:
                         lines = src.readlines()
                     linesst = [z.decode().split(' ') for z in lines]
