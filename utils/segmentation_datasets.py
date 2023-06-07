@@ -27,8 +27,11 @@ from .drone_data import DroneData
 from .data_processing import from_xarray_2array
 from .gis_functions import merging_overlaped_polygons
 from .multipolygons_functions import IndividualUAVData
+<<<<<<< HEAD
 from .xr_functions import add_2dlayer_toxarrayr
 
+=======
+>>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
 
 def get_clossest_prediction(image_center, bb_predictions, distance_limit = 30):
     distpos = None
@@ -610,6 +613,7 @@ class SegmentationUAVData(DroneData):
 
 
 ### 
+<<<<<<< HEAD
 
 
 class SegmentationPrediction():
@@ -674,6 +678,9 @@ class SegmentationPrediction():
                       lr=configuration['lr'], betas=configuration['beta'])
 
 class UAVSegmentation(SegmentationPrediction):
+=======
+class UAVSegmentation(object):
+>>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
     
     def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'], **kwargs):
         
@@ -685,6 +692,7 @@ class UAVSegmentation(SegmentationPrediction):
         
         return f
     
+<<<<<<< HEAD
     def segment_image_usingbb(self,bbid = None, channels = ['blue','green', 'red'], idmatch = None, idcolumn = None):
         
         assert len(channels) == 3 # it must be an bgr combination
@@ -706,6 +714,26 @@ class UAVSegmentation(SegmentationPrediction):
         else:
             spatial_boundaries = self.sp_df.iloc[bbid:bbid+1]
             
+=======
+    def segment_image_usingbb(self,bbid, channels = ['blue','green', 'red']):
+        
+        assert len(channels) == 3 # it must be an bgr combination
+        msks = None
+        self.get_stacked_image(bbid)
+        
+        if self.xrimage is not None:
+            img = self.xrimage[channels].to_array().values
+            msks = self.get_mask(img, keepdims=True)
+        
+        
+        return msks
+    
+    def get_stacked_image(self, bbid):
+        
+        assert bbid<self.sp_df.shape[0]
+        
+        spatial_boundaries = self.sp_df.iloc[bbid:bbid+1]
+>>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
         if spatial_boundaries.shape[0]>0:
             
             uavdata = IndividualUAVData(self.rgb_input, 
@@ -723,6 +751,7 @@ class UAVSegmentation(SegmentationPrediction):
             self.xrimage = uavdata.uav_sources['stacked']
         else:
             self.xrimage = None
+<<<<<<< HEAD
             
     def add_mask_xrdata(self, mask, variable_name=None):
         
@@ -745,13 +774,18 @@ class UAVSegmentation(SegmentationPrediction):
         
         return self.xrimage
         
+=======
+>>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
 
     def __init__(self, rgb_input=None, ms_input=None, threed_input=None, df_boundaries_fn=None, 
                  rgb_bands=None, ms_bands=None, buffer_preprocess=0.6, buffer = 0,architecture = "Unet256"):
         
         assert type(df_boundaries_fn) == str
         self.sp_df = gpd.read_file(df_boundaries_fn)
+<<<<<<< HEAD
         self.xrimage = None
+=======
+>>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
         
         self.rgb_input = rgb_input
         self.ms_input = ms_input
