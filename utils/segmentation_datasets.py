@@ -625,6 +625,7 @@ class SegmentationPrediction():
         self.msks = np.array(np.expand_dims(msksc, axis =0))
         
     def get_mask(self, image, keepdims = True):
+        import collections
         
         self.imgtensor = image_to_tensor(image=image, outputsize = self.inputimgsize)
         self.img = image
