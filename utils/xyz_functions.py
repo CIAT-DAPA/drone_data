@@ -223,24 +223,26 @@ def from_cloudpoints_to_xarray(dfpointcloud,
     xarraylist = []
     for j in range(len(dfpointcloud)):
         list_rasters = []
-        xycoords = dfpointcloud[j][[1,0]].values.copy()
+        xycoords = dfpointcloud[j][[0,1]].values.copy()
 
         for i in range(2,totallength):
             valuestorasterize = dfpointcloud[j].iloc[:,[i]].iloc[:, 0].values
-            rasterinterpolated = rasterize_using_bb(valuestorasterize, 
+            
+            if interpolate:
+                rasterinterpolated = points_rasterinterpolated(
+                    (xycoords.T[0],xycoords.T[1],valuestorasterize), 
+                    transform = trans, 
+                    rastershape = imgsize,
+                    inter_method= inter_method,
+                               knn = knn, weights = weights,
+                               variogram_model = variogram_model)
+            else:
+                rasterinterpolated = rasterize_using_bb(valuestorasterize, 
                                                     dfpointcloud[j].geometry, 
                                                     transform = trans, imgsize =imgsize)
 
             
-            if interpolate:
-                
-                rasterinterpolated = points_rasterinterpolated(
-                    (xycoords.T[0],xycoords.T[1],valuestorasterize), 
-                    transform = trans, 
-                    rastershape = rasterinterpolated.shape,
-                    inter_method= inter_method,
-                               knn = knn, weights = weights,
-                               variogram_model = variogram_model)
+            
 
      
             list_rasters.append(rasterinterpolated)
@@ -413,17 +415,28 @@ def points_to_raster_interp(points, grid, method = "KNN",
 
 
 def points_rasterinterpolated(points, transform, rastershape, inter_method = 'KNN', **kargs):
-        from .gis_functions import coordinates_fromtransform
-        x, y = coordinates_fromtransform(transform,
-                            [rastershape[1], rastershape[0]])
+    """_summary_
 
-        xx,yy = np.meshgrid(np.sort(np.unique(x)), np.sort(np.unique(y)))
+    Args:
+        points (pandas.DataFrame): point cloud dataframe
+        transform (Affine): raster transformation matrix 
+        rastershape (list): image size (Height x Width)
+        inter_method (str, optional): _description_. Defaults to 'KNN'.
 
-        rastinterp = points_to_raster_interp(
-                            points,
-                            (yy,xx), method = inter_method, **kargs)
+    Returns:
+        numpy array: interpolated image
+    """
+    from drone_data.utils.gis_functions import coordinates_fromtransform
+    rows, columns = coordinates_fromtransform(transform,
+                        [rastershape[0], rastershape[1]])
 
-        return rastinterp
+    yy,xx = np.meshgrid(np.sort(np.unique(columns)), np.sort(np.unique(rows)))
+    
+    rastinterp = points_to_raster_interp(
+                        points,
+                        (yy,xx), method = inter_method, **kargs)
+
+    return rastinterp
                 
 
 

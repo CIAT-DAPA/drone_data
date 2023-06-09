@@ -294,7 +294,8 @@ def transform_fromxy(x, y, spr):
         sprx, spry = spr
     gridX, gridY = np.meshgrid(x, y)
 
-    return [Affine.translation(gridX[0][0] - sprx / 2, gridY[0][0] - spry / 2) * Affine.scale(sprx, spry),
+    return [Affine.translation(
+        gridX[0][0] - sprx / 2, gridY[0][0] - spry / 2) * Affine.scale(sprx, spry),
             gridX.shape]
 
 
@@ -319,11 +320,11 @@ def coordinates_fromtransform(transform, imgsize):
     """Create a longitude, latitude meshgrid based on the spatial affine.
 
     Args:
-        transform (_type_): Affine matrix transformation
-        imgsize (_type_): height and width 
+        transform (Affine): Affine matrix transformation
+        imgsize (list): height and width 
 
     Returns:
-        _type_: _description_
+        _type_: coordinates list in columns and rows
     """
     # All rows and columns
     rows, cols = np.meshgrid(np.arange(imgsize[0]), np.arange(imgsize[1]))
