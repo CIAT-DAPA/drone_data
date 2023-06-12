@@ -6,6 +6,7 @@ import pickle
 import numpy as np
 import geopandas as gpd
 
+from .data_processing import data_standarization
 from . import drone_data
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
@@ -122,9 +123,8 @@ def single_vi_bsl_impt_preprocessing(
             xrdatac = impute_4dxarray(xrdatac, 
             bandstofill=bandstofill,
             nabandmaskname=nabandmaskname,n_neighbors=5)
-        else:
-            xrdatac = xarray_imputation(xrdatac, bands=[height_name],
-                                        nabandmaskname=nabandmaskname,n_neighbors=5)
+        #else:
+        #    xrdatac = xarray_imputation(xrdatac, bands=[height_name],n_neighbors=5)
             
         suffix +='imputation_' 
 
@@ -493,3 +493,167 @@ def summary_data(data):
                     'standarization':meanstd})
 
     return summary
+
+
+
+##
+
+def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geometry = None,rgb_channels = None,
+                                   mschannels = None, 
+                                   buffer = 0,
+                                   processing_buffer = 0, 
+                                   interpolate_pc = True, 
+                                   rgb_asreference = True):
+    
+    uavdata = IndividualUAVData(rgbpath, 
+                    mspath, 
+                    pcpath, 
+                    geometry, 
+                    rgb_channels, 
+                    mschannels, buffer = processing_buffer)
+    
+    if rgbpath is not None:
+        uavdata.rgb_uavdata()
+    if mspath is not None:
+        uavdata.ms_uavdata()
+    if pcpath is not None:
+        uavdata.pointcloud(interpolate = interpolate_pc)
+        
+    xrinfo = uavdata.stack_uav_data(bufferdef = buffer, 
+        rgb_asreference = rgb_asreference,resample_method = 'nearest')
+    
+    return xrinfo
+
+def xr_data_normalization(xrdata, scaler, scalertype = 'standarization'):
+    
+    if scalertype == 'standarization':
+        fun = data_standarization
+    
+    varchanels = list(xrdata.keys())
+    
+    for channel in varchanels:
+        if channel in list(scaler.keys()):
+            val1, val2 = scaler[channel]
+            scaleddata = fun(xrdata[channel].to_numpy(), val1, val2)
+            xrdata[channel].values = scaleddata
+    return xrdata
+
+class MultiMLTImages():
+    
+    def extract_samples(self, channels = None, n_samples = 100, **kwargs):
+        import random
+        import itertools
+        import tqdm
+        
+        dictdata = {}
+        first = True
+        listids= []
+        while len(listids)< n_samples:
+            tmplistids = list(np.unique(random.sample(range(self.geometries.shape[0]), n_samples-len(listids))))
+            listids = list(np.unique(listids+tmplistids))
+         
+        for j in tqdm.tqdm(listids[:n_samples]):
+            try:
+                self.individual_data(j, **kwargs)
+                channels = list(self.xrdata.keys()) if channels is None else channels
+                for i, feature in enumerate(channels):
+                    data = self.xrdata[feature].values.copy()
+                    data[data == 0] = np.nan
+                    if first:
+                        valtosave = list(itertools.chain.from_iterable(data))
+                    else:
+                        valtosave = dictdata[feature] + list(itertools.chain.from_iterable(data))
+                    
+                    dictdata[feature] = valtosave
+            except:
+                pass
+        return dictdata
+    
+    def individual_data(self,  geometry_id, interpolate_pc = True,
+                        rgb_asreference = True, 
+                        datesnames = None,
+                        buffer = None):
+        
+        
+        assert self.geometries.shape[0] > geometry_id
+        roi = self.geometries.iloc[geometry_id:geometry_id+1]
+
+        datalist = []
+        for i in range(len(self.rgb_paths)):
+            rgbpath = self.rgb_paths[i] if self.rgb_paths is not None else None
+            mspath = self.ms_paths[i] if self.ms_paths is not None else None
+            pcpath = self.pointcloud_paths[i] if self.pointcloud_paths is not None else None
+            
+            datalist.append(extract_uav_datausing_geometry(rgbpath, 
+                            mspath, 
+                            pcpath, 
+                            roi, 
+                            self.rgb_channels, 
+                            self.ms_channels, 
+                            buffer= buffer,
+                            processing_buffer = self.processing_buffer,
+                            interpolate_pc = interpolate_pc, rgb_asreference = rgb_asreference))
+        
+        if len(datalist)>1:
+            self.xrdata = stack_as4dxarray(datalist,axis_name = 'date', 
+                valuesaxis_names=datesnames, 
+                resizeinter_method = 'nearest')
+        else:
+            self.xrdata = datalist[0]
+    
+        return self.xrdata
+    
+    def scale_uavdata(self, scaler, scaler_type = 'standarization'):
+        """scale the imagery using values
+
+        Args:
+            scaler (_type_): _description_
+            scaler_type (dict, optional): _description_. Defaults to 'standarization'.
+        """
+        assert type(scaler) == dict
+        #assert len(list(scaler.keys())) == len(list(self.xrdata.keys()))
+        
+        self.xrdata = xr_data_normalization(self.xrdata, scaler, scalertype = scaler_type)
+        
+    def calculate_vi(self, vilist, viequations = None, overwritevi = True):
+        if vilist is None:
+            vilist = ['ndvi']
+        if viequations is None:
+            from drone_data.utils.general import MSVEGETATION_INDEX
+            viequations = MSVEGETATION_INDEX
+        xrdatac = self.xrdata.copy()
+        for vi in vilist:
+            xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,
+                                              expression = viequations[vi], 
+                                              overwrite=overwritevi)
+        
+        self.xrdata = xrdatac
+        return self.xrdata
+    
+    def summarize_as_dataframe(self, channels = None,func = np.nanmedian):
+        dataasdict = None
+        channels = channels if channels is not None else list(self.xrdata.keys())
+        if len(list(self.xrdata.dims.keys())) == 2:
+            dataasdict = {channel: [func(self.xrdata[channel].values)] 
+             for channel in channels}
+        
+        return dataasdict
+    
+    def __init__(self, rgb_paths=None, 
+                 ms_paths=None, 
+                 pointcloud_paths=None, 
+                 spatial_file=None, 
+                 rgb_channels=None, 
+                 ms_channels=None, 
+                 processing_buffer=0.6):
+        
+        self.rgb_paths = rgb_paths
+        self.ms_paths = ms_paths
+        self.pointcloud_paths = pointcloud_paths
+        self.processing_buffer = processing_buffer
+        self.rgb_channels = rgb_channels
+        self.ms_channels = ms_channels
+        
+        assert type(spatial_file) is str
+        self.geometries = gpd.read_file(spatial_file)
+            

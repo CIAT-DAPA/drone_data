@@ -1,6 +1,6 @@
 import math
-
-
+import pandas as pd
+import numpy as np
 
 MSVEGETATION_INDEX = {# rgb bands
 'grvi': '(green_ms - red_ms)/(green_ms + red_ms)',
@@ -65,3 +65,27 @@ def find_postinlist(listvalues, refvalue):
 def euclidean_distance(p1,p2):
     return math.sqrt(
         math.pow(p1[0] - p2[0],2) + math.pow(p1[1] - p2[1],2))
+
+
+        
+def organize_scaler(mscalervals, rgbscalervals, varnames, 
+                    rgbchannels = ['blue','green','red'],
+                    mschannels = ['blue_ms','green_ms','red_ms','edge','nir'],
+                    standarizationtype = 'standarization'):
+    orscaler = {}
+    for channel in varnames:
+        if channel in rgbchannels:
+            orscaler[channel] = rgbscalervals[channel][standarizationtype]
+        if channel in mschannels:
+            orscaler[channel] = mscalervals[standarizationtype]
+    
+    return orscaler
+
+def calculate_fd(pddata, xvalues):
+    dx = np.diff(xvalues)
+    maskwrongvalues = dx<100.
+    dx = dx[maskwrongvalues]
+    fd = pddata.apply(lambda y: np.diff(y)[maskwrongvalues]/dx, axis = 1)
+    #fddf = pd.concat([i for i in fd], axis = 1)pd.concat([pd.DataFrame(list(i)).T for i in fd], axis = 1)
+    return pd.concat([pd.DataFrame(list(i)).T for i in fd], axis = 0).reset_index().drop(['index'], axis = 1)
+

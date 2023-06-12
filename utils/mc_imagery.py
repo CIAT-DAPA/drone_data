@@ -5,6 +5,9 @@ import numpy as np
 import pickle
 import os
 
+import pandas as pd
+
+
 def calculate_vi_fromarray(arraydata, variable_names,vi='ndvi', expression='(nir - green)/(nir + green)', label=None, navalues = None, overwrite = False):
     """
     Function to calculate vegetation indices given an equation and a multi-channels data array
@@ -168,6 +171,5 @@ class SPArrayData(object):
 
         if len(self.listfiles) == 0:
             raise ValueError("there are no files in {} with suffix {}".format(self.path, suffix))
-        
         
         
