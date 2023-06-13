@@ -74,4 +74,45 @@ class ClassificationReporter(object):
             self._reporter_keys = ['features','cvscores']
         else:
             self._reporter_keys = _reporter_keys
+            
+
+class DL_ClassReporter(ClassificationReporter):
+    def n_models(self):
+        breaks = self._get_breaks()
+        return len(breaks)-1
+    
+    def _get_breaks(self):
+        splitpos = []
+        for j,i in enumerate(self.reporter[self.iterationcolumn]):
+            if i == 0:
+                splitpos.append(j)
+        return splitpos
+    
+    def get_data(self,index):
+        breaks = self._get_breaks()
+        dicttmp = {}
+        for i in self.reporter.keys():        
+            dicttmp[i] = self.reporter[i][breaks[index]:breaks[index+1]]
+            
+        return dicttmp
+    
+    def summarize_all_models_bymax(self, featureofinterest):
+        assert featureofinterest in list(self.reporter.keys())
+        valueslist = []
+        
+        for i in range(self.n_models()):    
+            dicttmp = {}
+            data = self.get_data(i)
+            posmax = np.argmax(data[featureofinterest])
+            for k in list(self.reporter.keys()):
+                dicttmp[k] = data[k][posmax]
+            valueslist.append(dicttmp)
+            
+        return valueslist
+    
+    def __init__(self, _reporter_keys=None, iterationcolumn = 'iteration') -> None:
+        super().__init__(_reporter_keys)
+        self.iterationcolumn = iterationcolumn
+
+
         
