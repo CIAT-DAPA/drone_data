@@ -38,7 +38,7 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
     trdata = dictdata['attributes']['transform']
     crsdata = dictdata['attributes']['crs']
     varnames = list(dictdata['variables'].keys())
-    listnpdata = [dictdata['variables'][i] for i in list(dictdata['variables'].keys())]
+    listnpdata = get_data_from_dict(dictdata)
 
     trd = affine.Affine(trdata[0],trdata[1],trdata[2],trdata[3],trdata[4],trdata[5])
 
@@ -54,8 +54,31 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
         
     return datar
 
-class CustomXarray(object):
+
+def get_data_from_dict(data, onlythesechannels = None):
+            
+        dataasarray = []
+        channelsnames = list(data['variables'].keys())
+        
+        if onlythesechannels is not None:
+            channelstouse = [i for i in onlythesechannels if i in channelsnames]
+        else:
+            channelstouse = channelsnames
+        for chan in channelstouse:
+            dataperchannel = data['variables'][chan] 
+            dataasarray.append(dataperchannel)
+
+        return np.array(dataasarray)
     
+class CustomXarray(object):
+    """custom class to export uav data into pickle and/or json file
+
+    Args:
+        object (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     @check_output_fn
     def _export_aspickle(self, path, fn, suffix = '.pickle') -> None:
 
@@ -69,7 +92,14 @@ class CustomXarray(object):
         with open(fn, "w") as outfile:
             outfile.write(json_object)
     
-          
+    @check_output_fn
+    def _read_data(self, path, fn, suffix = '.pickle'):
+        with open(fn,"rb") as f:
+            data = pickle.load(f)
+        if suffix == '.pickle':
+            data = data[0]
+        return data
+      
     def export_as_dict(self, path, fn, asjson = False,**kwargs):
 
         self._filetoexport = self.to_custom_dict()
@@ -85,33 +115,47 @@ class CustomXarray(object):
         self._export_aspickle(path, fn,**kwargs)
     
     def to_custom_dict(self):
+        """xarray convertion to a custom dict
 
-        datadict = {
-            'variables':{},
-            'dims':{},
-            'attributes': {}}
-
-        self.variables = list(self.xrdata.keys())
-        
-        for feature in self.variables:
-            datadict['variables'][feature] = self.xrdata[feature].values
-
-        for dim in self.xrdata.dims.keys():
-            if dim == 'date':
-                datadict['dims'][dim] = np.unique(self.xrdata[dim])
+        Returns:
+            dict: dictionary that contains channels data in array type [variables], dimentional names [dims], and sptial attributes [attrs]
+        """
+        if self.customdict is None:
             
-        
-        for attr in self.xrdata.attrs.keys():
-            if attr == 'transform':
-                datadict['attributes'][attr] = list(self.xrdata.attrs[attr])
-            else:
-                datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
+            datadict = {
+                'variables':{},
+                'dims':{},
+                'attributes': {}}
+
+            self.variables = list(self.xrdata.keys())
             
-        return datadict
+            for feature in self.variables:
+                datadict['variables'][feature] = self.xrdata[feature].values
+
+            for dim in self.xrdata.dims.keys():
+                if dim == 'date':
+                    datadict['dims'][dim] = np.unique(self.xrdata[dim])
+                
+            
+            for attr in self.xrdata.attrs.keys():
+                if attr == 'transform':
+                    datadict['attributes'][attr] = list(self.xrdata.attrs[attr])
+                else:
+                    datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
+        
+        return self.customdict
     
+    @staticmethod
+    def to_array(customdict=None, onlythesechannels = None):
+        data = get_data_from_dict(customdict, onlythesechannels)
+        return data
+        
 
-    def __init__(self, xarraydata= None, file = None, customdict = False, dataformat = 'DCHW') -> None:
-        """initialize custom xarra
+    def __init__(self, xarraydata= None, file = None, 
+                 customdict = False,
+                 filesuffix = '.pickle',
+                 dataformat = 'DCHW') -> None:
+        """initialize custom xarray
 
         Args:
             xarraydata (xarra dataset, optional): . Defaults to None.
@@ -119,17 +163,19 @@ class CustomXarray(object):
             customdict (bool, optional): boolean to determine if the pickle file is a dictionary or a xarray
             dataformat (list, optional): multi dimensional order. Defaults to DCHW.
         """
+        self.xrdata = None
+        self.customdict = None
         if xarraydata:
             assert type(xarraydata) is xarray.Dataset
             self.xrdata = xarraydata
             
         elif file:
-            assert os.path.exists(file)
-            with open(file,"rb") as f:
-                data = pickle.load(f)
-                
+            data = self._read_data(path=os.path.dirname(file), 
+                                   fn = os.path.basename(file),
+                                   suffix=filesuffix)
+              
             if customdict:
-                data = data[0]
+                self.customdict = data
                 self.xrdata = from_dict_toxarray(data, dimsformat = dataformat)
                 
             else:

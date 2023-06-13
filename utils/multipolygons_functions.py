@@ -7,10 +7,10 @@ import numpy as np
 import geopandas as gpd
 
 from .data_processing import data_standarization
-from . import drone_data
+
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
-from .xr_functions import stack_as4dxarray
+from .xr_functions import stack_as4dxarray,CustomXarray
 from .xyz_functions import CloudPoints
 from .xyz_functions import get_baseline_altitude
 from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
@@ -382,7 +382,7 @@ class IndividualUAVData(object):
         
         try:
             if os.path.exists(self.threed_input):
-                buffertmp = self._boundaries_buffer.copy().reset_index(),
+                buffertmp = self._boundaries_buffer.copy().reset_index()
                 buffertmp = buffertmp[0] if type(buffertmp) == tuple else buffertmp
                 if 0 in buffertmp.columns:
                     buffertmp = buffertmp.rename(columns={0:'geometry'})
@@ -538,7 +538,15 @@ def xr_data_normalization(xrdata, scaler, scalertype = 'standarization'):
             xrdata[channel].values = scaleddata
     return xrdata
 
-class MultiMLTImages():
+class MultiMLTImages(CustomXarray):
+    @property
+    def listcxfiles(self):
+        if self.path is not None:
+            assert os.path.exists(self.path) ## directory soes nmot exist
+            files = [i for i in os.listdir(self.path) if i.endswith('pickle')]
+        else:
+            files = None
+        return files
     
     def extract_samples(self, channels = None, n_samples = 100, **kwargs):
         import random
@@ -546,20 +554,21 @@ class MultiMLTImages():
         import tqdm
         
         dictdata = {}
-        first = True
+        
         listids= []
         while len(listids)< n_samples:
             tmplistids = list(np.unique(random.sample(range(self.geometries.shape[0]), n_samples-len(listids))))
             listids = list(np.unique(listids+tmplistids))
-         
+        
         for j in tqdm.tqdm(listids[:n_samples]):
             try:
                 self.individual_data(j, **kwargs)
                 channels = list(self.xrdata.keys()) if channels is None else channels
+                #
                 for i, feature in enumerate(channels):
                     data = self.xrdata[feature].values.copy()
                     data[data == 0] = np.nan
-                    if first:
+                    if feature not in list(dictdata.keys()):
                         valtosave = list(itertools.chain.from_iterable(data))
                     else:
                         valtosave = dictdata[feature] + list(itertools.chain.from_iterable(data))
@@ -603,6 +612,16 @@ class MultiMLTImages():
     
         return self.xrdata
     
+    def read_individual_data(self, pattern = None, onlythesechannels = None):
+        """read 
+        """
+        file = [i for i in self.listcxfiles if i == pattern][0]
+        customdict = self._read_data(path=self.path, 
+                                   fn = os.path.basename(file),
+                                   suffix='pickle')
+        
+        return self.to_array(customdict,onlythesechannels)
+        
     def scale_uavdata(self, scaler, scaler_type = 'standarization'):
         """scale the imagery using values
 
@@ -639,13 +658,29 @@ class MultiMLTImages():
         
         return dataasdict
     
-    def __init__(self, rgb_paths=None, 
+    def __init__(self, 
+                 rgb_paths=None, 
                  ms_paths=None, 
                  pointcloud_paths=None, 
                  spatial_file=None, 
                  rgb_channels=None, 
                  ms_channels=None, 
-                 processing_buffer=0.6):
+                 path = None,
+                 processing_buffer=0.6,
+                 **kwargs):
+        """function to extract orthomosaic imagery from RGB, MS, and point cloud using 
+        a vector file
+
+        Args:
+            rgb_paths (list, optional): list of folder paths that contains the RGB orthomosaic. Defaults to None.
+            ms_paths (list, optional): list of folder paths that contains the MS orthomosaic imagery. Defaults to None.
+            pointcloud_paths (list, optional): list of folder paths that contains the point cloud with extension xyz. Defaults to None.
+            spatial_file (str, optional): vector file path. Defaults to None.
+            rgb_channels (list, optional): rgb channel names. Defaults to None.
+            ms_channels (list, optional): multi-spectral channel names. Defaults to None.
+            path (str, optional): a path that contains customdict xarray as pickle. Default to None.
+            processing_buffer (float, optional): _description_. Defaults to 0.6.
+        """
         
         self.rgb_paths = rgb_paths
         self.ms_paths = ms_paths
@@ -653,7 +688,10 @@ class MultiMLTImages():
         self.processing_buffer = processing_buffer
         self.rgb_channels = rgb_channels
         self.ms_channels = ms_channels
+        self.path = path
+        super().__init__(**kwargs)
+        if spatial_file is not None:
+            assert os.path.exists(spatial_file)
+            self.geometries = gpd.read_file(spatial_file)
         
-        assert type(spatial_file) is str
-        self.geometries = gpd.read_file(spatial_file)
             

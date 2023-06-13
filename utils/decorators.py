@@ -2,6 +2,10 @@ import os
 import cv2
 
 def check_output_fn(func):
+    """decorator to check the exists of the path, 
+    and then to concatenate both filenames and path directory
+
+    """
     def inner(file, path, fn, suffix):
         try:
             if not os.path.exists(path):

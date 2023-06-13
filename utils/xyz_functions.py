@@ -17,7 +17,7 @@ from .plt_functions import plot_2d_cloudpoints
 
 from sklearn.neighbors import KNeighborsRegressor
 from pykrige.ok import OrdinaryKriging
-
+import shapely
 
 
 def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
@@ -568,8 +568,11 @@ class CloudPoints:
             xyzfile = [xyzfile]
 
         if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
-            gpdpolygon = gpdpolygon.reset_index().geometry[0]
-
+            gpdpolygon = gpdpolygon.reset_index()["geometry"][0]
+        
+        assert (type(gpdpolygon) is shapely.Polygon)
+            
+            
         self.boundaries = gpdpolygon.bounds
         self.xyzfile = xyzfile
         self.geometry = gpdpolygon
