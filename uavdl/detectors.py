@@ -173,9 +173,16 @@ class DroneObjectDetection(DroneData):
         
 class UAVSegmentation(SegmentationPrediction):
     
-    def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'], **kwargs):
+    def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'],scale = False,scaler = None, **kwargs):
         
-        img = self.xrimage[channels].to_array().values
+        xrdata = self.xrimage[channels].copy()
+        if scale:
+            from drone_data.utils.xr_functions import xr_data_transformation
+            xrdata = xr_data_transformation(xrdata,scaler=scaler,scalertype="normalization")
+            img = xrdata.to_array().values*255.
+        else:
+            img = xrdata.to_array().values
+        
         mask[mask<threshold] = 0
         
         f = plot_segmenimages((img.swapaxes(0,1).swapaxes(1,2)
