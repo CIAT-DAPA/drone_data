@@ -2,36 +2,78 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-def draw_frame(img, bbbox, dictlabels = None, default_color = (255,255,255)):
+def add_frame_label(imgc,
+                    label,
+                    coords,
+                    color = None,
+                    sizefactorred = 200,
+                    heightframefactor = .2,
+                    widthframefactor = .8,
+                    frame = True,
+                    textthickness = 1):
+    
+    if color is None:
+        color = (255,255,255)
+        
+    x1,y1,x2,y2 = coords
+    
+    widhtx = abs(int(x1) - int(x2))
+    heighty = abs(int(y1) - int(y2))
+        
+    xtxt = x1 if x1 < x2 else x2
+    ytxt = y1 if y1 < y2 else y2
+    
+    if frame:
+        imgc = cv2.rectangle(imgc, (xtxt,ytxt), (xtxt + int(widhtx*widthframefactor), 
+                                                     ytxt - int(heighty*heightframefactor)), color, -1)
+        colortext = (255,255,255)
+    else:
+        colortext = color
+        
+    imgc = cv2.putText(img=imgc, text=label,org=( xtxt + int(widhtx/15),
+                                                          ytxt - int(heighty/20)), 
+                                fontFace=cv2.FONT_HERSHEY_DUPLEX, 
+                                fontScale=1*((heighty)/sizefactorred), color=colortext, 
+                                thickness=textthickness)
+    
+    return imgc
+            
+
+def draw_frame(img, bbbox, dictlabels = None, default_color = None, bbtype = None, 
+               sizefactorred = 200, bb_thickness = 4):
     imgc = img.copy()
+    
+    #get colors
+    if default_color is None:
+        default_color = [(1,1,1)]*len(bbbox)
+        
+        #print(default_color)
     for i in range(len(bbbox)):
-        x1,x2,y1,y2 = bbbox[i]
+        
+        if bbtype == 'xminyminxmaxymax':
+            x1,y1,x2,y2 = bbbox[i]
+            
+        else:
+            x1,x2,y1,y2 = bbbox[i]
 
-        widhtx = abs(x1 - x2)
-        heighty = abs(y1 - y2)
-
-        start_point = (x1, y1)
-        end_point = (x2,y2)
+        start_point = (int(x1), int(y1))
+        end_point = (int(x2),int(y2))
         if dictlabels is not None:
             color = dictlabels[i]['color']
             label = dictlabels[i]['label']
         else:
-            label = ''
-            color = default_color
-
-        thickness = 4
-        xtxt = x1 if x1 < x2 else x2
-        ytxt = y1 if y1 < y2 else y2
-        imgc = cv2.rectangle(imgc, start_point, end_point, color, thickness)
+            label = str(i)
+            color = [int(z*255) for z in default_color[i]]
+        
+        
+        imgc = cv2.rectangle(imgc, start_point, end_point, color, bb_thickness)
         if label != '':
-
-            imgc = cv2.rectangle(imgc, (xtxt,ytxt), (xtxt + int(widhtx*0.8), ytxt - int(heighty*.2)), color, -1)
+            imgc = add_frame_label(imgc,
+                    label,
+                    [int(x1),int(y1),int(x2),int(y2)],color,sizefactorred)
             
-            imgc = cv2.putText(img=imgc, text=label,org=(xtxt + int(abs(x1-x2)/15),
-                                                            ytxt - int(abs(y1-y2)/20)), 
-                                                            fontFace=cv2.FONT_HERSHEY_DUPLEX, fontScale=1*((heighty)/200), color=(255,255,255), thickness=2)
             
-    return imgc
+    return imgc   
 
 
 def plot_segmenimages(img, maskimg, boxes = None, figsize = (10, 8), 
