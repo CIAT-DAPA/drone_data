@@ -10,7 +10,7 @@ import geopandas as gpd
 
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
-from .xr_functions import stack_as4dxarray,CustomXarray, from_dict_toxarray
+from .xr_functions import stack_as4dxarray,CustomXarray, from_dict_toxarray,from_xarray_to_dict
 from .xyz_functions import CloudPoints
 from .xyz_functions import get_baseline_altitude
 from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
@@ -570,7 +570,7 @@ class MultiMLTImages(CustomXarray):
                         datesnames = None,
                         buffer = None):
         
-        
+        self._scalarflag = False
         assert self.geometries.shape[0] > geometry_id
         roi = self.geometries.iloc[geometry_id:geometry_id+1]
 
@@ -602,6 +602,7 @@ class MultiMLTImages(CustomXarray):
     def read_individual_data(self, file = None, dataformat = 'CHW'):
         """read 
         """
+        self._scalarflag = False
         file = [i for i in self.listcxfiles if i == file][0]
         self.customdict = self._read_data(path=self.path, 
                                    fn = os.path.basename(file),
@@ -610,7 +611,7 @@ class MultiMLTImages(CustomXarray):
         #return self.to_array(self.customdict,onlythesechannels)
     
     #@staticmethod
-    def scale_uavdata(self, scaler, scaler_type = 'standarization'):
+    def scale_uavdata(self, scaler, scaler_type = 'standarization', applyagain =False):
         from .xr_functions import xr_data_transformation
         """scale the imagery using values
 
@@ -619,9 +620,18 @@ class MultiMLTImages(CustomXarray):
             scaler_type (dict, optional): _description_. Defaults to 'standarization'.
         """
         assert type(scaler) == dict
-        #assert len(list(scaler.keys())) == len(list(self.xrdata.keys()))
-        self.xrdata = xr_data_transformation(self.xrdata, scaler, scalertype = scaler_type)
+        if not self._scalarflag:
+            #assert len(list(scaler.keys())) == len(list(self.xrdata.keys()))
+            self.xrdata = xr_data_transformation(self.xrdata, scaler, scalertype = scaler_type)
+            self._scalarflag = True
+        elif applyagain:
+            self.xrdata = xr_data_transformation(self.xrdata, scaler, scalertype = scaler_type)
+        else:
+            print('this was was already applied, to apply again change to True')
         
+        return self.xrdata 
+            
+                    
     def calculate_vi(self, vilist, viequations = None, overwritevi = True):
         if vilist is None:
             vilist = ['ndvi']

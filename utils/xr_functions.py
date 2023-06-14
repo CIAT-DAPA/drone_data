@@ -56,6 +56,39 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
         
     return datar
 
+def from_xarray_to_dict(xrdata):
+    """transform spatial xarray data to custom dict
+
+    Args:
+        xrdata (xarray): spatial xarray
+
+    Returns:
+        dict: qih folowing keys 'variables':chanels information, 'dims':dimensions names, and 'attributes': spatial attributes affine, crs
+    """
+    
+    datadict = {
+        'variables':{},
+        'dims':{},
+        'attributes': {}}
+
+    variables = list(xrdata.keys())
+    
+    for feature in variables:
+        datadict['variables'][feature] = xrdata[feature].values
+
+    for dim in xrdata.dims.keys():
+        if dim == 'date':
+            datadict['dims'][dim] = np.unique(xrdata[dim])
+        
+    
+    for attr in xrdata.attrs.keys():
+        if attr == 'transform':
+            datadict['attributes'][attr] = list(xrdata.attrs[attr])
+        else:
+            datadict['attributes'][attr] = '{}'.format(xrdata.attrs[attr])
+    
+    return datadict
+
 
 def get_data_from_dict(data, onlythesechannels = None):
             
@@ -104,7 +137,7 @@ class CustomXarray(object):
       
     def export_as_dict(self, path, fn, asjson = False,**kwargs):
 
-        self._filetoexport = self.to_custom_dict()
+        self._filetoexport = self.custom_dict
         if asjson:
             self._export_asjson(path, fn,suffix = '.json')
             
@@ -116,36 +149,14 @@ class CustomXarray(object):
         self._filetoexport = self.xrdata
         self._export_aspickle(path, fn,**kwargs)
     
-    def to_custom_dict(self):
+    @property
+    def custom_dict(self):
         """xarray convertion to a custom dict
 
         Returns:
             dict: dictionary that contains channels data in array type [variables], dimentional names [dims], and sptial attributes [attrs]
         """
-        if self.customdict is None:
-            
-            datadict = {
-                'variables':{},
-                'dims':{},
-                'attributes': {}}
-
-            self.variables = list(self.xrdata.keys())
-            
-            for feature in self.variables:
-                datadict['variables'][feature] = self.xrdata[feature].values
-
-            for dim in self.xrdata.dims.keys():
-                if dim == 'date':
-                    datadict['dims'][dim] = np.unique(self.xrdata[dim])
-                
-            
-            for attr in self.xrdata.attrs.keys():
-                if attr == 'transform':
-                    datadict['attributes'][attr] = list(self.xrdata.attrs[attr])
-                else:
-                    datadict['attributes'][attr] = '{}'.format(self.xrdata.attrs[attr])
-        
-        return self.customdict
+        return from_xarray_to_dict(self.xrdata)
     
     @staticmethod
     def to_array(customdict=None, onlythesechannels = None):
@@ -177,7 +188,6 @@ class CustomXarray(object):
                                    suffix=filesuffix)
               
             if customdict:
-                self.customdict = data
                 self.xrdata = from_dict_toxarray(data, dimsformat = dataformat)
                 
             else:
