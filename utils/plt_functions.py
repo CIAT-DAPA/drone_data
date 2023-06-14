@@ -27,7 +27,7 @@ def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_wid
     ax.set_axis_off()
     plt.show()
 
-def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinverse = True):
+def plot_multibands_fromxarray(xarradata, bands, figsize = (12,8), xinverse = True):
     """
     This function will plot an xarray data in RGB format
 
@@ -45,7 +45,7 @@ def plot_multibands_fromxarray(xarradata, bands, fig_sizex=12, fig_sizey=8, xinv
 
     threebanddata = np.dstack(tuple(threebanddata))
 
-    fig, ax = plt.subplots(figsize=(fig_sizex, fig_sizey))
+    fig, ax = plt.subplots(figsize=figsize)
 
     ax.imshow(threebanddata)
     if xinverse:
@@ -88,8 +88,8 @@ def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z',
         mode='markers',
         marker=dict(color=['rgb({},{},{})'.format(r,g,b) for r,g,b in
                            zip(plotdf[rgb_bandnames[0]].values[nonvaluemask], 
-                               plotdf[rgb_bandnames[0]].values[nonvaluemask], 
-                               plotdf[rgb_bandnames[0]].values[nonvaluemask])]))
+                               plotdf[rgb_bandnames[1]].values[nonvaluemask], 
+                               plotdf[rgb_bandnames[2]].values[nonvaluemask])]))
 
     layout = go.Layout(margin=dict(l=0,
                                r=0,
@@ -313,7 +313,8 @@ def plot_multichanels(data, num_rows = 2,
                 elif num_rows == 1 or num_columns == 1:
                     ax[i].imshow(data[count], cmap=cmaptxt, vmin=vmin, vmax=vmax)
                     ax[i].set_title(vars[count], fontdict=fontmainfigure)
-                    ax[i].invert_xaxis()
+                    if invertaxis:
+                        ax[i].invert_xaxis()
                     ax[i].set_axis_off()
 
                 count +=1

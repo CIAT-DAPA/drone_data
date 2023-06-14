@@ -6,11 +6,11 @@ import pickle
 import numpy as np
 import geopandas as gpd
 
-from .data_processing import data_standarization
+
 
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
-from .xr_functions import stack_as4dxarray,CustomXarray
+from .xr_functions import stack_as4dxarray,CustomXarray, from_dict_toxarray
 from .xyz_functions import CloudPoints
 from .xyz_functions import get_baseline_altitude
 from .gis_functions import impute_4dxarray,xarray_imputation,hist_ndxarrayequalization
@@ -524,19 +524,6 @@ def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geo
     
     return xrinfo
 
-def xr_data_normalization(xrdata, scaler, scalertype = 'standarization'):
-    
-    if scalertype == 'standarization':
-        fun = data_standarization
-    
-    varchanels = list(xrdata.keys())
-    
-    for channel in varchanels:
-        if channel in list(scaler.keys()):
-            val1, val2 = scaler[channel]
-            scaleddata = fun(xrdata[channel].to_numpy(), val1, val2)
-            xrdata[channel].values = scaleddata
-    return xrdata
 
 class MultiMLTImages(CustomXarray):
     @property
@@ -612,17 +599,19 @@ class MultiMLTImages(CustomXarray):
     
         return self.xrdata
     
-    def read_individual_data(self, pattern = None, onlythesechannels = None):
+    def read_individual_data(self, file = None, dataformat = 'CHW'):
         """read 
         """
-        file = [i for i in self.listcxfiles if i == pattern][0]
-        customdict = self._read_data(path=self.path, 
+        file = [i for i in self.listcxfiles if i == file][0]
+        self.customdict = self._read_data(path=self.path, 
                                    fn = os.path.basename(file),
                                    suffix='pickle')
-        
-        return self.to_array(customdict,onlythesechannels)
-        
+        self.xrdata  = from_dict_toxarray(self.customdict, dimsformat = dataformat)
+        #return self.to_array(self.customdict,onlythesechannels)
+    
+    #@staticmethod
     def scale_uavdata(self, scaler, scaler_type = 'standarization'):
+        from .xr_functions import xr_data_transformation
         """scale the imagery using values
 
         Args:
@@ -631,8 +620,7 @@ class MultiMLTImages(CustomXarray):
         """
         assert type(scaler) == dict
         #assert len(list(scaler.keys())) == len(list(self.xrdata.keys()))
-        
-        self.xrdata = xr_data_normalization(self.xrdata, scaler, scalertype = scaler_type)
+        self.xrdata = xr_data_transformation(self.xrdata, scaler, scalertype = scaler_type)
         
     def calculate_vi(self, vilist, viequations = None, overwritevi = True):
         if vilist is None:

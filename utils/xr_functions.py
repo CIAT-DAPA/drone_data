@@ -14,10 +14,12 @@ import os
 from .gis_functions import get_tiles, resize_3dxarray
 from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
+from .gis_functions import list_tif_2xarray
 
 from .image_functions import radial_filter, remove_smallpixels
-from .gis_functions import list_tif_2xarray
+
 from .decorators import check_output_fn
+from .data_processing import data_standarization, minmax_scale
 import json
 
 
@@ -485,6 +487,75 @@ def get_minmax_from_picklelistxarray(fns_list,
             min_dict[varname] = minval if mindict> minval else mindict
 
     return min_dict, max_dict
+
+def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 'standarization'):
+    
+    if varchanels is None:
+        varchanels = list(range(len(values)))
+    if scalertype == 'standarization':
+        if scaler is None:
+            scaler = {chan:[np.nanmean(values[i]),
+                            np.nanstd(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_standarization
+    elif scalertype == 'normalization':
+        if scaler is None:
+            scaler = {chan:[np.nanmin(values[i]),
+                            np.nanmax(values[i])] for i, chan in enumerate(varchanels)}
+        fun = minmax_scale
+    
+    else:
+        raise ValueError('{} is not an available option')
+    
+    valueschan = {}
+    for i, channel in enumerate(varchanels):
+        if channel in list(scaler.keys()):
+            val1, val2 = scaler[channel]
+            scaleddata = fun(values[i], val1, val2)
+            valueschan[channel] = scaleddata
+    
+    return valueschan    
+
+def customdict_transformation(customdict, scaler, scalertype = 'standarization'):
+    """scale customdict
+
+    Args:
+        customdict (dict): custom dict
+        scaler (dict): dictionary that contains the scalar values per channel. 
+                       e.g. for example to normalize the red channel you will provide min and max values {'red': [1,255]}  
+        scalertype (str, optional): string to mention if 'standarization' or 'normalization' is gonna be applied. Defaults to 'standarization'.
+
+    Returns:
+        xrarray: xrarraytransformed
+    """
+    ccdict = customdict.copy()
+    varchanels = list(ccdict['variables'].keys())
+    values =[ccdict['variables'][i] for i in varchanels]
+    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    for chan in list(trvalues.keys()):
+        ccdict['variables'][chan] = trvalues[chan]
+    
+
+def xr_data_transformation(xrdata, scaler = None, scalertype = 'standarization'):
+    """scale xrarrays
+
+    Args:
+        xrdata (xrarray): xarray that contains data
+        scaler (dict): dictionary that contains the scalar values per channel. 
+                       e.g. for example to normalize the red channel you will provide min and max values {'red': [1,255]}  
+        scalertype (str, optional): string to mention if 'standarization' or 'normalization' is gonna be applied. Defaults to 'standarization'.
+
+    Returns:
+        xrarray: xrarraytransformed
+    """
+    ccxr = xrdata.copy()
+    varchanels = list(ccxr.keys())
+    values =[ccxr[i].to_numpy() for i in varchanels]
+    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    for chan in list(trvalues.keys()):
+        ccxr[chan].values = trvalues[chan]
+    
+    return ccxr
+
 
 
 def get_meanstd_fromlistxarray(xrdatalist):
