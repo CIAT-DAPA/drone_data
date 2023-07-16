@@ -604,10 +604,10 @@ class MultiMLTImages(CustomXarray):
         """
         self._scalarflag = False
         file = [i for i in self.listcxfiles if i == file][0]
-        self.customdict = self._read_data(path=self.path, 
+        customdict = self._read_data(path=self.path, 
                                    fn = os.path.basename(file),
                                    suffix='pickle')
-        self.xrdata  = from_dict_toxarray(self.customdict, dimsformat = dataformat)
+        self.xrdata  = from_dict_toxarray(customdict, dimsformat = dataformat)
         #return self.to_array(self.customdict,onlythesechannels)
     
     #@staticmethod
