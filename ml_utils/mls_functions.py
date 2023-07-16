@@ -33,6 +33,10 @@ import os
 import copy
 import tqdm
 
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.svm import SVC
+
 def set_model(model_name = 'pls',
               scaler = 'standardscaler', 
               param_grid = None, 
@@ -184,6 +188,120 @@ def set_model(model_name = 'pls',
     
 
     return pipelinemodel
+
+
+
+
+def set_classification_model(model_name = 'rf',
+              scaler = 'standardscaler', 
+              param_grid = None, 
+              cv = 3, 
+              nworkers = -1):
+    
+    """
+    function to set a shallow learning model for classification, this is a sklearn function which first will scale the data, then will 
+    do a gridsearch to find the best hyperparameters
+
+    Parameters:
+    ----------
+    model_name: str
+        which is the model that will be used
+        {
+         'svr_radial': support vector machine with radial kernel,
+         
+         'rf': Random Forest,
+         'xgb': xtra gradient boosting}
+    scaler: str
+        which data scaler will be applied
+        {'minmax', 'standardscaler', default: 'standardscaler'}
+    param_grid: dict, optional
+        grid parameters used for hyperparameters gird searching
+    cv: int
+        k-folds for cross-validation
+    nworkers: int
+        set the number of workers that will be used for parallel process
+
+    Returns:
+    ---------
+    pipemodel
+
+    """
+    if scaler == 'minmax':
+        scl = MinMaxScaler()
+    if scaler == 'standardscaler':
+        scl = StandardScaler()
+
+
+    if model_name == 'svc_radial':
+        if param_grid is None:
+            param_grid = {'C': loguniform.rvs(0.1, 1e3, size=20),
+                          'gamma': loguniform.rvs(0.0001, 1e-1, size=20)}
+
+        ## model parameters
+        gs_svm_linear  = GridSearchCV(SVC(kernel='rbf'),
+                                          param_grid,
+                                          cv=cv,
+                                          n_jobs=nworkers)
+        pipelinemodel = Pipeline([('scaler', scl), ('svr_linear', gs_svm_linear)])
+
+    if model_name == 'xgb':
+        if param_grid is None:
+            param_grid = {
+                    'min_child_weight': [1, 2, 4],
+                    'gamma': [0.001,0.01,0.5, 1, 1.5, 2, 5],
+                    'n_estimators': [int(x) for x in np.linspace(start = 50, stop = 500, num = 3)],
+                    'colsample_bytree': [0.7, 0.8],
+                    'max_depth': [2,4,8,16,32],
+                    'reg_alpha': [1.1, 1.2, 1.3],
+                    'reg_lambda': [1.1, 1.2, 1.3],
+                    'subsample': [0.7, 0.8, 0.9]
+                    }
+
+        xgbclass = xgb.XGBClassifier(objective="binary:logistic",
+                        random_state = 123
+                )
+        gs_xgb  = RandomizedSearchCV(xgbclass,
+                               param_grid,
+                               cv=cv,
+                               n_jobs=nworkers,
+                               n_iter = 50)
+
+        pipelinemodel = Pipeline([('scaler', scl), ('xgb', gs_xgb)])
+
+        
+    if model_name == 'rf':
+        if param_grid is None:
+
+            # Number of trees in random forest
+            n_estimators = [int(x) for x in np.linspace(start = 50, stop = 500, num = 5)]
+            # Number of features to consider at every split
+            max_features = [0.3,0.6,0.9]
+            # Maximum number of levels in tree
+            max_depth = [int(x) for x in np.linspace(10, 110, num = 11)]
+            max_depth.append(None)
+            # Minimum number of samples required to split a node
+            min_samples_split = [2, 5, 10]
+            # Minimum number of samples required at each leaf node
+            min_samples_leaf = [2, 4,8]
+            # Method of selecting samples for training each tree
+            bootstrap = [True, False]
+            # Create the random grid
+            param_grid = {'n_estimators': n_estimators,
+                        'max_features': max_features,
+                        'max_depth': max_depth,
+                        'min_samples_split': min_samples_split,
+                        'min_samples_leaf': min_samples_leaf,
+                        'bootstrap': bootstrap}
+
+        rf = RandomForestClassifier(random_state=123)
+        rf_random = RandomizedSearchCV(estimator = rf, param_distributions = param_grid,
+                                               n_iter = 100, cv = cv, verbose=0, random_state=123, n_jobs = 8)
+       
+    
+        pipelinemodel = Pipeline([('scaler', scl), ('rf', rf_random)])
+
+    return pipelinemodel
+    
 
 def check_real_predictionshapes(real, prediction):
     """
