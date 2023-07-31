@@ -138,6 +138,8 @@ class DL_ClassReporter(ClassificationReporter):
         for j,i in enumerate(self.reporter[self.iterationcolumn]):
             if i == 0:
                 splitpos.append(j)
+        if len(splitpos) == 1:
+            splitpos.append(len(self.reporter[self.iterationcolumn]))
         return splitpos
     
     def get_data(self,index):
