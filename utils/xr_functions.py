@@ -41,7 +41,17 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
     crsdata = dictdata['attributes']['crs']
     varnames = list(dictdata['variables'].keys())
     listnpdata = get_data_from_dict(dictdata)
-
+    if type(trdata) is str:
+        trdata = trdata.replace('|','')
+        trdata = trdata.replace('\n ',',')
+        trdata = trdata.replace(' ','')
+        trdata = trdata.split(',')
+        trdata = [float(i) for i in trdata]
+        if trdata[0] == 0.0 or trdata[4] == 0.0:
+            pxsize = abs(dictdata['dims']['y'][0] - dictdata['dims']['y'][1])
+            trdata[0] = pxsize
+            trdata[4] = pxsize
+        
     trd = affine.Affine(trdata[0],trdata[1],trdata[2],trdata[3],trdata[4],trdata[5])
 
     datar = list_tif_2xarray(listnpdata, trd,
@@ -132,7 +142,8 @@ class CustomXarray(object):
         with open(fn,"rb") as f:
             data = pickle.load(f)
         if suffix == '.pickle':
-            data = data[0]
+            if type(data) is list:
+                data = data[0]
         return data
       
     def export_as_dict(self, path, fn, asjson = False,**kwargs):

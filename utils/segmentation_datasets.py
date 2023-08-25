@@ -118,7 +118,12 @@ def get_heights_and_widths(maskcontours):
 
 def plot_individual_mask(rgbimg, maskimg, textlabel = None,
                          col = [0,255,255], mask_image = True,
-                         addlines = True, addlabel = True,sizefactorred = 250,
+                         addlines = True, addlabel = True,
+                         addmask = True,
+                         addsquarecontour = True,
+                         alpha = 0.2,
+                         sizefactorred = 250,
+                         
                     heightframefactor = .15,
                     widthframefactor = .3,
                     textthickness = 1):
@@ -136,15 +141,20 @@ def plot_individual_mask(rgbimg, maskimg, textlabel = None,
     else:
         newimg = np.array(rgbimg).astype(np.uint8)
 
-
-    img = _apply_mask(newimg, (msksones).astype(np.uint8), col, 
-                      alpha=0.2)
+    if addmask:
+        img = _apply_mask(newimg, (msksones).astype(np.uint8), col, 
+                      alpha=alpha)
+    else:
+        img = newimg
     #img = newimg
     
     linecolor = list((np.array(col)*255).astype(np.uint8))
     m = np.ascontiguousarray(img, dtype=np.uint8)
-    if addlines:
+    
+    if addsquarecontour:
         m = cv2.drawContours(m,[find_contours(maskimg, hull = True)],0,[int(i) for i in linecolor],1)
+    
+    if addlines:
         pheightu, pheigthb, pwidthu, pwidthb = get_heights_and_widths(
             find_contours(maskimg, hull = True))
         m = cv2.line(m, pheightu, pheigthb, (0,0,0), 1)
@@ -166,6 +176,15 @@ def plot_individual_mask(rgbimg, maskimg, textlabel = None,
     return m
 
 
+def get_boundingboxfromseg(mask):
+    
+    pos = np.where(mask)
+    xmin = np.min(pos[1])
+    xmax = np.max(pos[1])
+    ymin = np.min(pos[0])
+    ymax = np.max(pos[0])
+    
+    return([xmin, ymin, xmax, ymax])
 
 def get_height_width(grayimg, pixelsize = 1):
     

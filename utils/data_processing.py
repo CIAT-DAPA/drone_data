@@ -146,6 +146,13 @@ def scaleminmax(values):
 
 
 
+def data_normalization(data, minval = None, maxval = None):
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
 
 def scalestd(values):
     return ((values - (np.nanmean(values) - np.nanstd(values) * 2)) /
@@ -382,4 +389,54 @@ def from_long_towide(data, indexname, values_columnname, metrics_colname):
         dfconcatenated = pd.merge(dfconcatenated,widephenomycs[i], how="left", on=[indexname])
 
     return dfconcatenated.reset_index()
+
+
+def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 'standarization'):
     
+    if varchanels is None:
+        varchanels = list(range(len(values)))
+    if scalertype == 'standarization':
+        if scaler is None:
+            scaler = {chan:[np.nanmean(values[i]),
+                            np.nanstd(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_standarization
+    elif scalertype == 'normalization':
+        if scaler is None:
+            scaler = {chan:[np.nanmin(values[i]),
+                            np.nanmax(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_normalization
+    
+    else:
+        raise ValueError('{} is not an available option')
+    
+    valueschan = {}
+    for i, channel in enumerate(varchanels):
+        if channel in list(scaler.keys()):
+            val1, val2 = scaler[channel]
+            scaleddata = fun(values[i], val1, val2)
+            valueschan[channel] = scaleddata
+    
+    return valueschan    
+
+
+def customdict_transformation(customdict, scaler, scalertype = 'standarization'):
+    """scale customdict
+
+    Args:
+        customdict (dict): custom dict
+        scaler (dict): dictionary that contains the scalar values per channel. 
+                       e.g. for example to normalize the red channel you will provide min and max values {'red': [1,255]}  
+        scalertype (str, optional): string to mention if 'standarization' or 'normalization' is gonna be applied. Defaults to 'standarization'.
+
+    Returns:
+        xrarray: xrarraytransformed
+    """
+
+    varchanels = list(customdict['variables'].keys())
+    values =[customdict['variables'][i] for i in varchanels]
+    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    for chan in list(trvalues.keys()):
+        customdict['variables'][chan] = trvalues[chan]
+        
+    return customdict
+
