@@ -73,6 +73,14 @@ class ClassificationReporter(object):
     _reporter_keys : list of str
         List of reporter keys.
     """
+    
+    def reset_reporter(self):
+        reporter = {}
+        for keyname in self._reporter_keys:
+            reporter.update({keyname: []})
+        
+        self.reporter = reporter
+        
     def update_reporter(self, new_entry):    
         """
         Update the reporter with a new entry.
@@ -208,4 +216,99 @@ class DL_ClassReporter(ClassificationReporter):
         self.iterationcolumn = iterationcolumn
 
 
+
+def concatenate_lists(listoflist):
+    
+    idsfromgroup = [] 
+    for j in range(len(listoflist)):
+        listunique = []
+        for i in listoflist[j]:
+            listunique.append('-'.join(i) if type(i) is list else i)
+        idsfromgroup.append('-'.join(listunique))
+    return(idsfromgroup)
+
+class CVReporter(object):
+    """
+    A class to summarize cross-validation classification or regression results .
+
+    Methods
+    -------
+    unique_attributes(new_entry)
+        select shunks of .
+    load_reporter(fn)
+        Load the reporter data from a JSON file.
+    scores_summary(scorenames='cvscores')
+        Calculate the summary of a score metric.
+    best_score(scorenames='cvscores')
+        Retrieve the best score from the reporter data.
+    save_reporter(fn)
+        Save the reporter data to a JSON file.
+
+    Attributes
+    ----------
+    reporter : dict
+        Dictionary containing the classification report data.
+    _reporter_keys : list of str
+        List of reporter keys.
+    """
+    def unique_attributes(self):
         
+        assert len(self.groupby) == sum([i in self.reporter._reporter_keys for i in self.groupby])
+        
+        datafeatunique =[]
+        for i in range(len(self.reporter.reporter[self.groupby[0]])):
+            attr = [self.reporter.reporter[attr][i] for attr in self.groupby]
+            if attr not in datafeatunique:
+                datafeatunique.append(attr)
+    
+        return datafeatunique
+        
+
+    def cv_groups(self, maxfeatures = None):
+        
+        uniqueresults = self.unique_attributes()
+        uniqueresults = concatenate_lists(uniqueresults)
+        groupsbycv = []
+        for i in uniqueresults:
+            # get attributes
+            indvals = []
+            for j in range(len(self.reporter.reporter[self.groupby[0]])):
+                
+                compared = concatenate_lists(
+                    [self.reporter.reporter[featname][j] if type(self.reporter.reporter[featname][j]) is list 
+                     else [self.reporter.reporter[featname][j]] for featname in self.groupby ])
+                if '-'.join(compared) == i:
+        
+                    indvals.append({featname:self.reporter.reporter[featname][j] 
+                                    for featname in list(self.reporter.reporter.keys())})
+            
+            groupsbycv.append(indvals)
+        
+        if maxfeatures is not None:
+            groupsbycv = [i for i in groupsbycv if len(i[0]['features']) == maxfeatures]
+
+        return groupsbycv
+
+    def cv_summary(self, eval_metric = 'valaccuracy', maxfeatures = None):
+        
+        cvgroups = self.cv_groups(maxfeatures = maxfeatures)
+        cvvals = []
+        for cvgroup in cvgroups:
+            cvval = np.mean([cvval[eval_metric] for cvval in cvgroup])
+            dictvalues = {i:cvgroup[0][i] for i in self.groupby}
+            dictvalues.update({eval_metric:cvval})
+            cvvals.append(dictvalues)
+        
+        return cvvals
+    
+    def best_result(self, eval_metric = 'valaccuracy', maxfeatures = None):
+        cvgroups = self.cv_summary(eval_metric = eval_metric, maxfeatures = maxfeatures)
+        
+        return cvgroups[np.argmax([i[eval_metric] for i in cvgroups])]
+    
+    def __init__(self, reporter, groupby = None) -> None:
+        
+        self.reporter = reporter
+        
+        groupby = groupby if type(groupby) is list else [groupby]
+        self.groupby = groupby
