@@ -538,8 +538,21 @@ def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geo
 
 
 class MultiMLTImages(CustomXarray):
+    """
+    A class for extracting, processing and stacking multi-temporal remote sensing data.
+
+
+    """
+    
     @property
     def listcxfiles(self):
+        """
+        Property: Retrieves a list of filenames ending with 'pickle' in the specified path.
+
+        Returns:
+            list: List of filenames.
+        """
+        
         if self.path is not None:
             assert os.path.exists(self.path) ## directory soes nmot exist
             files = [i for i in os.listdir(self.path) if i.endswith('pickle')]
@@ -547,7 +560,31 @@ class MultiMLTImages(CustomXarray):
             files = None
         return files
     
+    def _export_individual_data(self, geometry_id,path,fn,**kwargs):
+        """
+        Exports data for an individual geometry to a pickle file.
+
+        Args:
+            geometry_id (int): Index of the geometry.
+            path (str): Path to export directory.
+            fn (str): Filename for export.
+        """
+        
+        self.individual_data(geometry_id, **kwargs)
+        self.export_as_dict(path = path,fn=fn)
+        
     def extract_samples(self, channels = None, n_samples = 100, **kwargs):
+        """
+        Extracts sample data from a geopandas polygons.
+
+        Args:
+            channels (list, optional): List of channels to extract. Defaults to None.
+            n_samples (int): Number of samples to extract. Defaults to 100.
+
+        Returns:
+            dict: Extracted data organized by channel.
+        """
+        
         import random
         import itertools
         import tqdm
@@ -577,17 +614,22 @@ class MultiMLTImages(CustomXarray):
                 pass
         return dictdata
     
-    def _export_individual_data(self, geometry_id,path,fn,**kwargs):
-        
-        self.individual_data(geometry_id, **kwargs)
-        self.export_as_dict(path = path,fn=fn)
+
     
     def export_multiple_data(self, path, fnincolumn = None,njobs = 1, **kwargs):
+        """
+        Exports data for multiple geometries.
+
+        Args:
+            path (str): Path to export directory.
+            fnincolumn (str, optional): Name of the column in the geometry containing filenames. Defaults to None.
+            njobs (int, optional): Number of parallel jobs. Defaults to 1.
+        """
         
         # defining export file names
         
         if fnincolumn is not None:
-            fns = self.geometries[fnincolumn].values
+            fns = ['{}_{}'.format(fnincolumn, i) for i in self.geometries[fnincolumn].values]
         else:
             fns = ['file_{}'.format(i) for i in list(range(self.geometries.shape[0]))]
             
@@ -607,6 +649,16 @@ class MultiMLTImages(CustomXarray):
                         rgb_asreference = True, 
                         datesnames = None,
                         buffer = None):
+        """
+        Extracts data for an individual geometry.
+
+        Args:
+            geometry_id (int): Index of the geometry.
+            interpolate_pc (bool, optional): Interpolate point cloud data with knn. Defaults to True.
+            rgb_asreference (bool, optional): Use RGB as a reference for co-registration. Defaults to True.
+            datesnames (list, optional): Names for dates axis in the data cube. Defaults to None.
+            buffer (float, optional): Buffer value for geometry extraction. Defaults to None.
+        """
         
         self._scalarflag = False
         assert self.geometries.shape[0] > geometry_id
@@ -642,8 +694,14 @@ class MultiMLTImages(CustomXarray):
         return self.xrdata
     
     def read_individual_data(self, file = None, dataformat = 'CHW'):
-        """read 
         """
+        Reads data from a pickle file.
+
+        Args:
+            file (str, optional): Filename. Defaults to None.
+            dataformat (str, optional): Data format. Defaults to 'CHW'.
+        """
+        
         self._scalarflag = False
         file = [i for i in self.listcxfiles if i == file][0]
         customdict = self._read_data(path=self.path, 
@@ -655,12 +713,15 @@ class MultiMLTImages(CustomXarray):
     #@staticmethod
     def scale_uavdata(self, scaler, scaler_type = 'standarization', applyagain =False):
         from .xr_functions import xr_data_transformation
-        """scale the imagery using values
+        """
+        Scales the data using a scaler.
 
         Args:
-            scaler (_type_): _description_
-            scaler_type (dict, optional): _description_. Defaults to 'standarization'.
+            scaler (dict): Dictionary of scalers for each channel.
+            scaler_type (str, optional): Scaler type either 'standarization' or 'normalization'. Defaults to 'standarization'.
+            applyagain (bool, optional): Apply the scaling again. Defaults to False.
         """
+        
         assert type(scaler) == dict
         if not self._scalarflag:
             #assert len(list(scaler.keys())) == len(list(self.xrdata.keys()))
@@ -675,6 +736,15 @@ class MultiMLTImages(CustomXarray):
             
                     
     def calculate_vi(self, vilist, viequations = None, overwritevi = True):
+        """
+        Calculates vegetation indices.
+
+        Args:
+            vilist (list, optional): List of vegetation indices to calculate. Defaults to None.
+            viequations (dict, optional): Equations for vegetation indices. Defaults to None.
+            overwritevi (bool, optional): Overwrite existing index in the datacube. Defaults to True.
+        """
+        
         if vilist is None:
             vilist = ['ndvi']
         if viequations is None:
@@ -690,6 +760,17 @@ class MultiMLTImages(CustomXarray):
         return self.xrdata
     
     def summarize_as_dataframe(self, channels = None,func = np.nanmedian):
+        """
+        Summarizes the datacube as a DataFrame.
+
+        Args:
+            channels (list, optional): List of channels to summarize. Defaults to None.
+            func (function, optional): Aggregation function. Defaults to np.nanmedian.
+
+        Returns:
+            dict: Summary data organized by channel.
+        """
+        
         dataasdict = None
         channels = channels if channels is not None else list(self.xrdata.keys())
         if len(list(self.xrdata.dims.keys())) == 2:
@@ -712,14 +793,14 @@ class MultiMLTImages(CustomXarray):
         a vector file
 
         Args:
-            rgb_paths (list, optional): list of folder paths that contains the RGB orthomosaic. Defaults to None.
-            ms_paths (list, optional): list of folder paths that contains the MS orthomosaic imagery. Defaults to None.
-            pointcloud_paths (list, optional): list of folder paths that contains the point cloud with extension xyz. Defaults to None.
-            spatial_file (str, optional): vector file path. Defaults to None.
-            rgb_channels (list, optional): rgb channel names. Defaults to None.
-            ms_channels (list, optional): multi-spectral channel names. Defaults to None.
-            path (str, optional): a path that contains customdict xarray as pickle. Default to None.
-            processing_buffer (float, optional): _description_. Defaults to 0.6.
+            rgb_paths (list, optional): List of folder paths containing RGB orthomosaic imagery. Defaults to None.
+            ms_paths (list, optional): List of folder paths containing multispectral orthomosaic imagery. Defaults to None.
+            pointcloud_paths (list, optional): List of folder paths containing point cloud data (xyz format). Defaults to None.
+            spatial_file (str, optional): Path to a vector file defining spatial geometries. Defaults to None.
+            rgb_channels (list, optional): RGB channel names. Defaults to None.
+            ms_channels (list, optional): Multispectral channel names. Defaults to None.
+            path (str, optional): Path to a directory containing customdict xarray files as pickles. Defaults to None.
+            processing_buffer (float, optional): A buffer value for image processing. Defaults to 0.6.
         """
         
         self.rgb_paths = rgb_paths
