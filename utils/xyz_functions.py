@@ -570,8 +570,10 @@ class CloudPoints:
         if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
             gpdpolygon = gpdpolygon.reset_index()["geometry"][0]
         
-        assert (type(gpdpolygon) is shapely.Polygon)
-            
+        try:
+            assert (type(gpdpolygon) is shapely.Polygon)
+        except:
+            assert (type(gpdpolygon) is shapely.geometry.polygon.Polygon)
             
         self.boundaries = gpdpolygon.bounds
         self.xyzfile = xyzfile

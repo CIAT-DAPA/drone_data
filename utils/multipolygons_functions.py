@@ -7,7 +7,7 @@ import numpy as np
 import geopandas as gpd
 
 
-
+import concurrent.futures as cf
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
 from .xr_functions import stack_as4dxarray,CustomXarray, from_dict_toxarray,from_xarray_to_dict
@@ -408,7 +408,19 @@ class IndividualUAVData(object):
                  ms_bands = None,
                  buffer = 0.6,
         ):
+        
+        """function to extract orthomosaic imagery from RGB, MS, and point cloud using 
+        a vector file
 
+        Args:
+            rgb_input (str, optional): Path that contains the RGB orthomosaic. Defaults to None.
+            ms_input (str, optional): Path that contains the MS orthomosaic imagery. Defaults to None.
+            threed_input (str, optional): Path that contains the point cloud with extension xyz. Defaults to None.
+            spatial_boundaries (Polygon, optional): vector as spatial polygon. Defaults to None.
+            rgb_bands (list, optional): rgb channel names. Defaults to None.
+            ms_bands (list, optional): multi-spectral channel names. Defaults to None.
+            buffer (float, optional): processing buffer for image stacking. Defaults to 0.6.
+        """
         self.rgb_bands = rgb_bands
         self.ms_bands = ms_bands
 
@@ -565,6 +577,32 @@ class MultiMLTImages(CustomXarray):
                 pass
         return dictdata
     
+    def _export_individual_data(self, geometry_id,path,fn,**kwargs):
+        
+        self.individual_data(geometry_id, **kwargs)
+        self.export_as_dict(path = path,fn=fn)
+    
+    def export_multiple_data(self, path, fnincolumn = None,njobs = 1, **kwargs):
+        
+        # defining export file names
+        
+        if fnincolumn is not None:
+            fns = self.geometries[fnincolumn].values
+        else:
+            fns = ['file_{}'.format(i) for i in list(range(self.geometries.shape[0]))]
+            
+        if njobs == 1:
+            for j in tqdm.tqdm(range(self.geometries.shape[0])):
+                self._export_individual_data(self, j,path,fns[j],**kwargs)
+                
+        else:
+            with cf.ProcessPoolExecutor(max_workers=njobs) as executor:
+                for j in range(self.geometries.shape[0]):
+                    executor.submit(self._export_individual_data, 
+                                                    j, path, fns[j], **kwargs)
+                
+        
+    
     def individual_data(self,  geometry_id, interpolate_pc = True,
                         rgb_asreference = True, 
                         datesnames = None,
@@ -591,6 +629,10 @@ class MultiMLTImages(CustomXarray):
                             interpolate_pc = interpolate_pc, rgb_asreference = rgb_asreference))
         
         if len(datalist)>1:
+            if datesnames is None:
+                capturedates = [find_date_instring(self.rgb_paths[i]) for i in range(len(self.rgb_paths))]
+                datesnames = [datetime.strptime(m,'%Y%m%d') for m in capturedates]
+            
             self.xrdata = stack_as4dxarray(datalist,axis_name = 'date', 
                 valuesaxis_names=datesnames, 
                 resizeinter_method = 'nearest')
