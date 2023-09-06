@@ -372,7 +372,17 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0,
             
     if len(listraster[0].shape) == 3:
         
-        ##TODO: allow multiple formats
+        ##TODO: allow multiple formats+
+        if dimsformat == 'CDWH':
+            width = listraster[0].shape[1]
+            height = listraster[0].shape[2]
+            dims = ['date','y','x']
+            
+        if dimsformat == 'CDHW':
+            width = listraster[0].shape[2]
+            height = listraster[0].shape[1]
+            dims = ['date','y','x']
+            
         if dimsformat == 'DCHW':
             width = listraster[0].shape[2]
             height = listraster[0].shape[1]
@@ -628,6 +638,7 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
         channel = list(xrdata.keys())[0]
         
     if len(list(xrdata.dims.keys())) >=3:
+
         vardatename = [i for i in list(xrdata.dims.keys()) 
                         if type(xrdata[i].values[0]) == np.datetime64][0]
         initimageg = xrdata.isel({vardatename:refimg}).copy()
@@ -644,32 +655,33 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
         
     if wrapper == 'hull':
         center = getcenter_from_hull(initimageg[channel].values)
+        xp,yp = (center[1]),(center[0])
     if wrapper is None:
         center = xrdata[channel].values.shape[xdimpos]//2,xrdata[channel].values.shape[ydimpos]//2
+        xp,yp = (center[0]),(center[1])
     
     y = xrdata[channel].values.shape[ydimpos]
     x = xrdata[channel].values.shape[xdimpos]
-
-    xp,yp = (center[1]),(center[0])
 
     pr = red_perc/100
 
     redy = int(y*pr/2)
     redx = int(x*pr/2)
 
-
     lc = int((xp-redx) if (xp-redx) > 0 else 0)
     rc = int((xp+redx) if (x-(xp+redx)) > 0 else x)
     bc = int((yp-redy) if (yp-redy) > 0 else 0)
     tc = int((yp+redy) if (y-(yp+redy)) > 0 else y)
-        
-    npmask = np.zeros(xrdata[channel].values.shape)
-    if len(list(xrdata.dims.keys())) >=3:
-        npmask[:,bc:tc,lc:rc] = 1
-    else:
-        npmask[bc:tc,lc:rc] = 1
-
-    xrfiltered = xrdata.copy() * npmask
+    
+    xrfiltered = xrdata.copy()
+    for i in list(xrfiltered.keys()):
+        npmask = np.zeros(xrdata[i].values.shape)
+        if len(list(xrdata.dims.keys())) >=3:    
+            npmask[:,bc:tc,lc:rc] = 1
+        else:
+            npmask[bc:tc,lc:rc] = 1
+            
+        xrfiltered[i] = xrfiltered[i] * npmask
 
     if clip_xarray:
         ncols_img, nrows_img = xrfiltered.attrs['width'], xrfiltered.attrs['height']

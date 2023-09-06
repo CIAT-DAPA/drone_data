@@ -116,29 +116,57 @@ def get_data_from_dict(data, onlythesechannels = None):
         return np.array(dataasarray)
     
 class CustomXarray(object):
-    """custom class to export uav data into pickle and/or json file
-
-    Args:
-        object (_type_): _description_
-
-    Returns:
-        _type_: _description_
     """
+    A custom class for exporting UAV data into pickle and/or JSON files.
+    
+    Properties:
+        xrdata (xarray.Dataset): Contains xarray dataset.
+        customdict (dict): Custom dictionary containing channel data, dimensional names, and spatial attributes.
+
+    """
+    
     @check_output_fn
     def _export_aspickle(self, path, fn, suffix = '.pickle') -> None:
+        """
+        Export data as a pickle file.
+
+        Args:
+            path (str): Path to the export directory.
+            fn (str): Filename for export.
+            suffix (str, optional): File suffix. Defaults to '.pickle'.
+        """
 
         with open(fn, "wb") as f:
             pickle.dump([self._filetoexport], f)
     
     @check_output_fn
     def _export_asjson(self, path, fn, suffix = '.json'):
-        
+        """
+        Export data as a JSON file.
+
+        Args:
+            path (str): Path to the export directory.
+            fn (str): Filename for export.
+            suffix (str, optional): File suffix. Defaults to '.json'.
+        """
         json_object = json.dumps(self._filetoexport, cls = NpEncoder, indent=4)
         with open(fn, "w") as outfile:
             outfile.write(json_object)
     
     @check_output_fn
     def _read_data(self, path, fn, suffix = '.pickle'):
+        """
+        Read data from a file.
+
+        Args:
+            path (str): Path to the file.
+            fn (str): Filename.
+            suffix (str, optional): File suffix. Defaults to '.pickle'.
+
+        Returns:
+            _type_: Read data.
+        """
+        
         with open(fn,"rb") as f:
             data = pickle.load(f)
         if suffix == '.pickle':
@@ -147,7 +175,15 @@ class CustomXarray(object):
         return data
       
     def export_as_dict(self, path, fn, asjson = False,**kwargs):
+        """
+        Export data as a dictionary.
 
+        Args:
+            path (str): Path to the export directory.
+            fn (str): Filename for export.
+            asjson (bool, optional): Export as JSON. Defaults to False.
+        """
+        
         self._filetoexport = self.custom_dict
         if asjson:
             self._export_asjson(path, fn,suffix = '.json')
@@ -156,21 +192,41 @@ class CustomXarray(object):
             self._export_aspickle(path, fn,suffix = '.pickle', **kwargs)
 
     def export_as_xarray(self, path, fn,**kwargs):
+        """
+        Export data as an xarray.
 
+        Args:
+            path (str): Path to the export directory.
+            fn (str): Filename for export.
+        """
+        
         self._filetoexport = self.xrdata
         self._export_aspickle(path, fn,**kwargs)
     
     @property
     def custom_dict(self):
-        """xarray convertion to a custom dict
+        """
+        Convert xarray to a custom dictionary.
 
         Returns:
-            dict: dictionary that contains channels data in array type [variables], dimentional names [dims], and sptial attributes [attrs]
+            dict: Dictionary containing channel data in array format [variables], dimensional names [dims], and spatial attributes [attrs].
         """
+        
         return from_xarray_to_dict(self.xrdata)
     
     @staticmethod
     def to_array(customdict=None, onlythesechannels = None):
+        """
+        Convert a custom dictionary to a numpy array.
+
+        Args:
+            customdict (dict, optional): Custom dictionary. Defaults to None.
+            onlythesechannels (list, optional): List of channels tat will be used. Defaults to None.
+
+        Returns:
+            _type_: Converted array data.
+        """
+        
         data = get_data_from_dict(customdict, onlythesechannels)
         return data
         

@@ -99,7 +99,7 @@ def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z',
                                                     leaf_anglename ='leaf_angle',
                                                     leaf_anglethresh = 70,
                                                     reduction_perc = 40,
-                                                    name4d = 'date'):
+                                                    name4d = 'date', wrapper = "hull"):
     
 
 
@@ -113,7 +113,7 @@ def calculate_volume(xrdata, method = 'leaf_angle', heightvarname = 'z',
         xrfiltered = xrdata.where((xrdata[leaf_anglename])>leaf_anglethresh,np.nan)[heightvarname].copy()
     elif (method == 'window'):
                 
-        xrfiltered = get_filteredimage(xrdata, channel = heightvarname,red_perc = reduction_perc)
+        xrfiltered = get_filteredimage(xrdata, channel = heightvarname,red_perc = reduction_perc, wrapper = wrapper)
         xrfiltered = xrfiltered[heightvarname]
         
     volvalues = []
@@ -151,7 +151,7 @@ def growth_rate(df, datecolumn = None,valcolumn = 'value'):
 
 class Phenomics:
 
-    def check_dfphen_availability(self, phen = 'plant_height'):
+    def check_dfphen_availability(self, phen = 'plant_height', **kwargs):
         """
         a functions to check if the pehnotype was already calculated, otherwise it
         will calculate the metric using default parameters
@@ -169,22 +169,22 @@ class Phenomics:
             dfs = self._phenomic_summary[phen]
         else:
             if phen == 'plant_height':
-                self.plant_height_summary()
+                self.plant_height_summary(**kwargs)
                 
             if phen == 'leaf_angle':
-                self.leaf_angle_summary()
+                self.leaf_angle_summary(**kwargs)
                 
             if phen == 'volume':
-                self.volume_summary()
+                self.volume_summary(**kwargs)
             
             if phen in SPECTRAL_METRICS:
                 self.splectral_reflectance(spindexes = phen)
 
             if phen == 'leaf_area':
-                self.leaf_area()
+                self.leaf_area(**kwargs)
 
             if phen == 'rosette_area':
-                self.rosette_area()
+                self.rosette_area(**kwargs)
 
             if phen == 'convex_hull':
                 self.convex_hull_area()
@@ -194,10 +194,10 @@ class Phenomics:
         return dfs
 
 
-    def phenotype_growth_rate(self, phen = 'plant_height', valuecolname = 'value'):
+    def phenotype_growth_rate(self, phen = 'plant_height', valuecolname = 'value', **kwargs):
 
         name4d = list(self.xrdata.dims.keys())[0]
-        dfs = self.check_dfphen_availability(phen)
+        dfs = self.check_dfphen_availability(phen, **kwargs)
         
         
         dfg = dfs.groupby('metric').apply(
@@ -409,7 +409,7 @@ class Phenomics:
 
 
     def plant_height_summary(self, varname = 'z', quantiles = [0.25,0.5,0.75], 
-                             reduction_perc = None):
+                             reduction_perc = None, **kwargs):
         
         """
         a function to summarise the 2D heigth image into quantiles
@@ -434,7 +434,9 @@ class Phenomics:
         self._ph_varname = varname
         
         if reduction_perc is not None:
-            xrdata = get_filteredimage(self.xrdata, channel= varname,red_perc = reduction_perc)
+            xrdata = get_filteredimage(self.xrdata, 
+                                       channel= varname,
+                                       red_perc = reduction_perc, **kwargs)
         else:
             xrdata = self.xrdata.copy()
 
