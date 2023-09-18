@@ -392,7 +392,8 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
                           addcenter = False,
                           colorcenter = "red",
                           sizecenter = 8,
-                          fontname = "Arial"):
+                          fontname = "Arial",
+                          scale_factor = 0.1):
     """
     create a figure showing one ataked multiband figure
     ----------
@@ -445,7 +446,7 @@ def plot_multitemporal_rgbarray(arraydata, nrows = 2, ncols = None,
                 dataimg = mtdata[cont].copy()
                 if scale == "minmax":
                     datatoplot = np.dstack([(dataimg[i].data - np.nanmin(dataimg[i].data)
-                    )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in range(dataimg.shape[0])])
+                    )/(np.nanmax(dataimg[i].data) - np.nanmin(dataimg[i].data)) for i in range(dataimg.shape[0])])*scale_factor
                 else:
                     datatoplot = np.dstack([dataimg[i].data for i in range(dataimg.shape[0])])/scale
                 if nrows > 1:

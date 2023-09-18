@@ -7,6 +7,8 @@ import numpy as np
 import geopandas as gpd
 
 
+import multiprocessing
+
 import concurrent.futures as cf
 from .data_processing import find_date_instring
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
@@ -537,6 +539,8 @@ def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geo
     return xrinfo
 
 
+
+
 class MultiMLTImages(CustomXarray):
     """
     A class for extracting, processing and stacking multi-temporal remote sensing data.
@@ -644,11 +648,28 @@ class MultiMLTImages(CustomXarray):
                                                     j, path, fns[j], **kwargs)
                 
         
-    
+    def _time_pointsextraction(self,tp):
+        
+        rgbpath = self.rgb_paths[tp] if self.rgb_paths is not None else None
+        mspath = self.ms_paths[tp] if self.ms_paths is not None else None
+        pcpath = self.pointcloud_paths[tp] if self.pointcloud_paths is not None else None
+        
+        return extract_uav_datausing_geometry(rgbpath, 
+                        mspath, 
+                        pcpath, 
+                        self._tmproi, 
+                        self.rgb_channels, 
+                        self.ms_channels, 
+                        buffer= self._buffer,
+                        processing_buffer = self.processing_buffer,
+                        interpolate_pc = self._interpolate_pc, rgb_asreference = self._rgb_asreference)
+        
+
     def individual_data(self,  geometry_id, interpolate_pc = True,
                         rgb_asreference = True, 
                         datesnames = None,
-                        buffer = None):
+                        buffer = None,
+                        paralleltimepoints = False, njobs = None):
         """
         Extracts data for an individual geometry.
 
@@ -665,20 +686,23 @@ class MultiMLTImages(CustomXarray):
         roi = self.geometries.iloc[geometry_id:geometry_id+1]
 
         datalist = []
-        for i in range(len(self.rgb_paths)):
-            rgbpath = self.rgb_paths[i] if self.rgb_paths is not None else None
-            mspath = self.ms_paths[i] if self.ms_paths is not None else None
-            pcpath = self.pointcloud_paths[i] if self.pointcloud_paths is not None else None
+        self._tmproi,self._buffer,self._rgb_asreference,self._interpolate_pc =  roi, buffer,rgb_asreference,interpolate_pc
+        
+        if paralleltimepoints:
+            if njobs is None:
+                njobs = multiprocessing.cpu_count()
             
-            datalist.append(extract_uav_datausing_geometry(rgbpath, 
-                            mspath, 
-                            pcpath, 
-                            roi, 
-                            self.rgb_channels, 
-                            self.ms_channels, 
-                            buffer= buffer,
-                            processing_buffer = self.processing_buffer,
-                            interpolate_pc = interpolate_pc, rgb_asreference = rgb_asreference))
+            results = []
+            with cf.ProcessPoolExecutor(max_workers=njobs) as executor:
+                for i in range(len(self.rgb_paths)):
+                    results.append(executor.submit(self._time_pointsextraction, 
+                                                    i))
+            #print(results)
+            datalist = [future.result() for future in results]
+                    
+        else:
+            for i in range(len(self.rgb_paths)):
+                datalist.append(self._time_pointsextraction(i))
         
         if len(datalist)>1:
             if datesnames is None:
@@ -735,7 +759,7 @@ class MultiMLTImages(CustomXarray):
         return self.xrdata 
             
                     
-    def calculate_vi(self, vilist, viequations = None, overwritevi = True):
+    def calculate_vi(self, vilist, viequations = None, overwritevi = True, verbose = False):
         """
         Calculates vegetation indices.
 
@@ -752,6 +776,8 @@ class MultiMLTImages(CustomXarray):
             viequations = MSVEGETATION_INDEX
         xrdatac = self.xrdata.copy()
         for vi in vilist:
+            if verbose:
+                print('Computing {}'.format(vi))
             xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,
                                               expression = viequations[vi], 
                                               overwrite=overwritevi)

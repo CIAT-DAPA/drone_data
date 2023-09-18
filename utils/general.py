@@ -3,16 +3,16 @@ import pandas as pd
 import numpy as np
 
 MSVEGETATION_INDEX = {# rgb bands
-'grvi': '(green_ms - red_ms)/(green_ms + red_ms)',
+'grvi': '(green_ms - red_ms)/((green_ms + red_ms) + 0.00001)',
 'grvi_rgb': '(green - red)/((green + red)+0.00001)',
 'mgrvi': '((green_ms*green_ms) - (red_ms*red_ms))/((green_ms*green_ms) + (red_ms*red_ms))',
 'mgrvi_rgb': '((green*green) - (red*red))/(((green*green) + (red*red))+0.00001)',
-'rgbvi': '((green_ms*green_ms) - (blue_ms*red_ms))/ ((green_ms*green_ms) + (blue_ms*red_ms))',
+'rgbvi': '((green_ms*green_ms) - (blue_ms*red_ms))/ ((green_ms*green_ms) + (blue_ms*red_ms) + 0.00001)',
 'rgbvi_rgb': '((green*green) - (blue*red))/ (((green*green) + (blue*red))+0.00001)',
  # nir indexes
- 'ndvi': '(nir - red_ms)/(nir + red_ms)',
-'ndre': '(nir - edge)/(nir + edge)',
-'gndvi': '(nir - green_ms)/(nir + green_ms)',
+ 'ndvi': '(nir - red_ms)/((nir + red_ms)+0.000001)',
+'ndre': '(nir - edge)/((nir + edge)+0.000001)',
+'gndvi': '(nir - green_ms)/((nir + green_ms)+0.000001)',
 'regnvi': '(edge - green_ms)/(edge + green_ms)',
 'reci': '(nir / edge) - 1',
 'negvi': '((nir*nir) - (edge*green_ms))/ ((nir*nir) + (edge*green_ms))',
