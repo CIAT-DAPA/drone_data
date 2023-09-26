@@ -211,8 +211,10 @@ class CustomXarray(object):
         Returns:
             dict: Dictionary containing channel data in array format [variables], dimensional names [dims], and spatial attributes [attrs].
         """
-        
-        return from_xarray_to_dict(self.xrdata)
+        if self._customdict is None:
+            return from_xarray_to_dict(self.xrdata)
+        else:
+            return self._customdict
     
     @staticmethod
     def to_array(customdict=None, onlythesechannels = None):
@@ -244,7 +246,8 @@ class CustomXarray(object):
             dataformat (list, optional): multi dimensional order. Defaults to DCHW.
         """
         self.xrdata = None
-        self.customdict = None
+        self._customdict = None
+        self._arrayorder = dataformat
         if xarraydata:
             assert type(xarraydata) is xarray.Dataset
             self.xrdata = xarraydata
@@ -255,7 +258,7 @@ class CustomXarray(object):
                                    suffix=filesuffix)
               
             if customdict:
-                self.xrdata = from_dict_toxarray(data, dimsformat = dataformat)
+                self.xrdata = from_dict_toxarray(data, dimsformat = self._arrayorder)
                 
             else:
                 self.xrdata = data
