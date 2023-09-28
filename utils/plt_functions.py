@@ -621,7 +621,8 @@ def plot_heights(xrdata, num_rows = 2,
                      height_name = 'z',
                      bsl = None,
                      chanels_names = None, 
-                     label_name = 'Height (cm)', 
+                     label_name = 'Height (cm)',
+                     xlabel_name = 'Longitude (cm)',
                      fontsize=18,
                      scalez = 100,
                      phquantile = 0.5, 
@@ -736,7 +737,7 @@ def plot_heights(xrdata, num_rows = 2,
     # Adding the x-axis and y-axis labels for the bigger plot
     #plt.xlabel('Common X-Axis', fontsize=15, fontweight='bold')
     plt.ylabel(label_name + '\n', fontsize=int(fontsize*1.5), fontweight='bold')
-    plt.xlabel('Longitude (cm)', fontsize=int(fontsize*1.5), fontweight='bold')
+    plt.xlabel(xlabel_name, fontsize=int(fontsize*1.5), fontweight='bold')
 
 
     #plt.show()

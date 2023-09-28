@@ -587,7 +587,9 @@ def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 
     for i, channel in enumerate(varchanels):
         if channel in list(scaler.keys()):
             val1, val2 = scaler[channel]
+            msk0 = values[i] == 0
             scaleddata = fun(values[i], val1, val2)
+            scaleddata[msk0] = 0
             valueschan[channel] = scaleddata
     
     return valueschan    
