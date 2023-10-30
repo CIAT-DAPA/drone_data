@@ -1117,6 +1117,17 @@ def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'k
 
 def centerto_edgedistances_fromxarray(xrdata, refband = None, 
                                       wrapper = 'hull'):
+    """
+    function to find gemotrical center
+
+    Args:
+        xrdata (_type_): xarray that contains plant information
+        refband (_type_, optional): channel name used for finding the center. Defaults to None.
+        wrapper (str, optional): function to use as a wrapper for the pixels. Defaults to 'hull'.
+
+    Returns:
+        _type_: _description_
+    """
     bandnames = list(xrdata.keys())
     if refband is None:
         refband = bandnames[0]
@@ -1125,7 +1136,7 @@ def centerto_edgedistances_fromxarray(xrdata, refband = None,
     #distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
     refimg[refimg == 0.0] = np.nan
     refimg[np.logical_not(np.isnan(refimg))] = 255
-    if np.isnan(refimg).sum() / (refimg.shape[0]*refimg.shape[1]) < .9:
+    if np.isnan(refimg).sum() / (refimg.shape[0]*refimg.shape[1]) < .96:
         if wrapper == 'circle':
             refimg[np.isnan(refimg)] = 0
             refimg = refimg.astype(np.uint8)
