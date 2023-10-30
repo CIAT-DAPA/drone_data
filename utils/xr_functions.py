@@ -590,9 +590,9 @@ def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 
     for i, channel in enumerate(varchanels):
         if channel in list(scaler.keys()):
             val1, val2 = scaler[channel]
-            msk0 = values[i] == 0
+            #msk0 = values[i] == 0
             scaleddata = fun(values[i], val1, val2)
-            scaleddata[msk0] = 0
+            #scaleddata[msk0] = 0
             valueschan[channel] = scaleddata
     
     return valueschan    
@@ -749,30 +749,38 @@ def shift_andregister_xarray(xrimage, xrreference, boundary = None):
 
 def filter_3Dxarray_usingradial(xrdata,
                                 name4d = 'date', 
-                                onlythesedates = None, **kargs):
+                                onlythesedates = None, nanvalue = None,**kargs):
     
     varnames = list(xrdata.keys())
-    
+
     imgfilteredperdate = []
     for i in range(len(xrdata.date)):
-        indlayer = xrdata.isel(date = i).copy()
+        indlayer = xrdata.isel({name4d:i}).copy()
         if onlythesedates is not None and i in onlythesedates:
-            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+            indfilter =radial_filter(indlayer[varnames[0]].values,nanvalue = nanvalue, **kargs)
+            if nanvalue is not None:
+                
+                indlayer = indlayer.where(np.logical_not(indfilter == nanvalue),nanvalue)
+            else:
+                indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+        
         elif onlythesedates is None:
-            indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
-            indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+            indfilter =radial_filter(indlayer[varnames[0]].values,nanvalue = nanvalue, **kargs)
 
+            if nanvalue is not None:
+                indlayer = indlayer.where(np.logical_not(indfilter == nanvalue),nanvalue)
+            else:
+                indlayer = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
+            
         imgfilteredperdate.append(indlayer)
     
     if len(imgfilteredperdate)>0:
-        #name4d = list(xrdata.dims.keys())[0]
 
         mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
         mltxarray[name4d] = xrdata[name4d].values
     else:
         indlayer = xrdata.copy()
-        indfilter =radial_filter(indlayer[varnames[0]].values, **kargs)
+        indfilter =radial_filter(indlayer[varnames[0]].values,nanvalue = nanvalue, **kargs)
         mltxarray = indlayer.where(np.logical_not(np.isnan(indfilter)),np.nan)
 
     return mltxarray

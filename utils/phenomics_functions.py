@@ -9,7 +9,8 @@ from skimage.morphology import convex_hull_image
 
 
 from .gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
-from .image_functions import getcenter_from_hull
+from .image_functions import getcenter_from_hull, calculate_differencesinshape, img_padding
+
 
 
 MORPHOLOGICAL_METRICS = [
@@ -245,8 +246,10 @@ class Phenomics:
         pixelsize = self.xrdata.attrs['transform'][0]*scalefactor
         for doi in range(len(self.xrdata.date.values)):
             initimageg = xrdata[doi]
+            initimageg[initimageg ==0 ] = np.nan
             initimageg[np.logical_not(np.isnan(initimageg))] = 1
             initimageg[np.isnan(initimageg)] = 0
+
             chull = convex_hull_image(initimageg, 
                                       offset_coordinates=False)
             convexhullimgs.append(np.nansum(chull)*pixelsize*pixelsize)
@@ -272,23 +275,31 @@ class Phenomics:
         fig, ax = plt.subplots(figsize=figsize, ncols=len(self.xrdata[name4d].values),
                                nrows=1)
         
-        xrdata = self.xrdata[refband].copy().values
-        
+       
         pixelsize = self.xrdata.attrs['transform'][0]*scalefactor
+        
+
         for doi in range(len(self.xrdata.date.values)):
-            initimageg = xrdata[doi]
-            initimageg[initimageg ==0 ] = np.nan
-            initimageg[np.logical_not(np.isnan(initimageg))] = 1
-            initimageg[np.isnan(initimageg)] = 0
-            chull = convex_hull_image(initimageg, 
-                                      offset_coordinates=False)
             
-            c = getcenter_from_hull(initimageg)
             
             threebanddata = []
             for i in ['red', 'green','blue']:
                 threebanddata.append(self.xrdata.isel(date=doi).copy()[i].data)
+                
+
             threebanddata = np.dstack(tuple(threebanddata))/255
+            imgpd = int(threebanddata.shape[0]*1.15)
+            threebanddata = img_padding(threebanddata, imgpd)
+            initimageg = threebanddata[:,:,0]
+            initimageg[initimageg ==0 ] = np.nan
+            initimageg[np.logical_not(np.isnan(initimageg))] = 1
+            initimageg[np.isnan(initimageg)] = 0
+            
+
+            chull = convex_hull_image(initimageg, 
+                                      offset_coordinates=False)
+            
+            c = getcenter_from_hull(initimageg)
 
             ax[doi].imshow(threebanddata)
             if addcenter:
@@ -318,8 +329,8 @@ class Phenomics:
         distdates = []
         for doi in range(len(self.xrdata.date.values)):
             initimageg = xrdata.isel(date =doi).copy()
-            leaflongestdist,_ = centerto_edgedistances_fromxarray(initimageg, anglestep=2, 
-                                                                        nathreshhold = 3, refband = refband)
+            leaflongestdist, ( xp,yp) = centerto_edgedistances_fromxarray(
+                initimageg, wrapper='circle')
             distdates.append(
                 leaflongestdist)
 
@@ -357,24 +368,31 @@ class Phenomics:
             #if np.isnan(initimageg[refband].values[yp,xp]):
             #    yp, xp = getcenter_from_hull(initimageg[refband].copy().values)
 
-            leaflongestdist,( xp,yp) = centerto_edgedistances_fromxarray(initimageg, anglestep=2,
-                                    nathreshhold = 3, refband = refband)
-                                  
-            area = leaflongestdist*leaflongestdist*pixelsize*pixelsize* math.pi
+            leaflongestdist, ( xp,yp) = centerto_edgedistances_fromxarray(
+                initimageg, wrapper='circle')
+
             threebanddata = []
             for i in ['red', 'green','blue']:
-                threebanddata.append(self.xrdata.isel(date=doi).copy()[i].data)
+                threebanddata.append(initimageg[i].data)
+            imgpd = int(leaflongestdist*1.25)
+
             threebanddata = np.dstack(tuple(threebanddata))/255
 
-            draw_circle = plt.Circle((xp, yp), leaflongestdist,fill=False, color = 'r')
+            dif_height, dif_width = calculate_differencesinshape(threebanddata.shape[0],threebanddata.shape[1], 
+                                                                imgpd)
 
+            xp, yp = (xp+dif_width, yp+dif_height)
+            threebanddata = img_padding(threebanddata, imgpd)
+            draw_circle = plt.Circle((xp, yp), leaflongestdist,fill=False, color = 'r')
+            
             ax[doi].add_artist(draw_circle)
             ax[doi].imshow(threebanddata)
             ax[doi].scatter(xp, yp, color = 'r' )
 
             ax[doi].invert_xaxis()
             ax[doi].set_axis_off()
-            ax[doi].set_title("Rosette area\n{} (cm2)".format(np.round(area,2)), size=28, color = 'r')
+            ax[doi].set_title("Rosette radious\n{} (cm)".format(
+                np.round(leaflongestdist*pixelsize,2)), size=28, color = 'r')
 
         if saveplot:
             if outputpath is None:

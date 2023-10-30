@@ -1115,7 +1115,8 @@ def xarray_imputation(xrdata, bands = None,namask = None, imputation_method = 'k
     return xrdata
 
 
-def centerto_edgedistances_fromxarray(xrdata, refband = None, wrapper = 'hull'):
+def centerto_edgedistances_fromxarray(xrdata, refband = None, 
+                                      wrapper = 'hull'):
     bandnames = list(xrdata.keys())
     if refband is None:
         refband = bandnames[0]

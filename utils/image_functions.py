@@ -74,6 +74,22 @@ def getcenter_from_hull(npgrayimage, buffernaprc = 15):
 
     return int(cx),int(cy)
 
+def calculate_differencesinshape(height,width, distance):
+    dif_height = (distance-height//2) if distance > height//2 else 0
+    dif_width = (distance-width//2) if distance > width//2 else 0
+    
+    return dif_height, dif_width
+
+def img_padding(img, distancefromcenter):
+    distancefromcenter = int(distancefromcenter)
+    height, width = img.shape[0], img.shape[1]
+
+    dif_height, dif_width = calculate_differencesinshape(height,width, distancefromcenter)
+
+    newimg = np.zeros((img.shape[0]+dif_height*2, img.shape[1]+dif_width*2, img.shape[2]))
+    newimg[dif_height:height+dif_height,dif_width:width+dif_width] = img
+
+    return newimg
 
 def border_distance_fromgrayimg(grimg):
     contours, _ = cv.findContours(grimg, 
@@ -191,14 +207,27 @@ def cartimg_topolar_transform(nparray, anglestep = 5, max_angle = 360, expand_ra
     return [distances, np.array(listacrossvalues)]
 
 
-def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
-    
+def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5, nanvalue = None):
+    """ Function to filter those pixels that that are not in contarct with the main image
 
-    
+    Args:
+        nparray (_type_): image numpy array 2D
+        anglestep (int, optional): anlge used to go though the figure. Defaults to 5.
+        max_angle (int, optional): up to what angle. Defaults to 360.
+        nathreshhold (int, optional): maximum separation. Defaults to 5.
+        nanvalue (_type_, optional): if nan value in the image is represented by a specfic value. Defaults to None.
+
+    Returns:
+        _type_: image numpy array 2D
+    """
+    origimg = nparray.copy()
+    if nanvalue is not None:
+        nanmask = nparray == nanvalue
+        origimg[nanmask] = np.nan
     center_x = int(nparray.shape[1]/2)
     center_y = int(nparray.shape[0]/2)
 
-    origimg = nparray.copy()
+    
     if np.isnan(origimg[center_y,center_x]):
         center_y, center_x = getcenter_from_hull(origimg)
 
@@ -238,6 +267,9 @@ def radial_filter(nparray, anglestep = 5, max_angle = 360, nathreshhold = 5):
             else:
                 break
     
+    if nanvalue is not None:
+        modimg[np.isnan(modimg)] = nanvalue
+        
     return modimg
 
 
