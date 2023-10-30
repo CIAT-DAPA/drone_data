@@ -21,7 +21,19 @@ def select_columns(df, colstoselect, additionalfilt = 'gr_'):
     return df[list(compress(df.columns,  colsbol))]
 
 def split_idsintwo(ndata, ids = None, percentage = None, fixedids = None, seed = 123):
+    """
+    Split the IDs into two sets.
 
+    Args:
+        ids_length (int): Length of the IDs.
+        ids (list): List of IDs.
+        percentage (float): Percentage of data to allocate into one group.
+        fixedids (list): List of IDs that can be used to split the data.
+        seed (int): Random seed.
+
+    Returns:
+        tuple: A tuple containing both groups of ids.
+    """
     if ids is None:
         ids = list(range(len(ndata)))
 
@@ -63,6 +75,13 @@ class SplitIds(object):
 
     
     def _ids(self):
+        """
+        Generate a list of IDs ranging from 0 to (ids_length - 1).
+
+        Returns:
+            list: A list of IDs.
+        """
+        
         ids = list(range(self.ids_length))
         if self.shuffle:
             ids = pd.Series(ids).sample(n = self.ids_length, random_state= self.seed).tolist()
@@ -86,21 +105,21 @@ class SplitIds(object):
     
     def __init__(self, ids_length = None, ids = None,val_perc =None, test_perc = None,seed = 123, shuffle = True, testids_fixed = None) -> None:
         """
-        Split a number of observations into training, validation, and testing groups
+        Split a number of observations into training, validation, and testing groups.
 
         Args:
-            ids_length (int, optional): data's length. Defaults to None.
-            ids (list, optional): if there each position has labels. Defaults to None.
-            val_perc (float, optional): decimal number that represents the validation percentage dataset. Defaults to None.
-            test_perc (_type_, optional): decimal number that represents the testing percentage dataset. Defaults to None.
-            seed (int, optional): random seed. Defaults to 123.
-            shuffle (bool, optional): if the ids is gonna be shuffled. Defaults to True.
-            testids_fixed (list, optional): if there is already a testing partion you can rpovide the ids of that test dataset. Defaults to None.
+            ids_length (int, optional): Data's length. Defaults to None.
+            ids (list, optional): If there are labels for each position. Defaults to None.
+            val_perc (float, optional): Decimal number that represents the validation percentage dataset. Defaults to None.
+            test_perc (float, optional): Decimal number that represents the testing percentage dataset. Defaults to None.
+            seed (int, optional): Random seed. Defaults to 123.
+            shuffle (bool, optional): If the IDs are going to be shuffled. Defaults to True.
+            testids_fixed (list, optional): If there is already a testing partition, you can provide the IDs of that test dataset. Defaults to None.
 
         Raises:
-            ValueError: if either ids_length or ids are not provided
-        
+            ValueError: If either ids_length or ids are not provided.
         """
+        
         
         self.shuffle = shuffle
         self.seed = seed
@@ -196,7 +215,8 @@ class SplitIdsClassification(SplitIds):
     def __init__(self, 
                  targetvalues=None, 
                  ids=None, 
-                 val_perc=None, test_perc=None, seed=123, shuffle=True, testids_fixed=None, stratified = True) -> None:
+                 val_perc=None, test_perc=None, seed=123, shuffle=True, testids_fixed=None, 
+                 stratified = True) -> None:
         
         self.targetvalues = targetvalues
         self.categories = np.unique(targetvalues)

@@ -193,10 +193,12 @@ def set_model(model_name = 'pls',
 
 
 def set_classification_model(model_name = 'rf',
-              scaler = 'standardscaler', 
+              scaler = 'standardscaler',
+              scale_data = True,
               param_grid = None, 
               cv = 3, 
-              nworkers = -1):
+              nworkers = -1,
+              seed = 123):
     
     """
     function to set a shallow learning model for classification, this is a sklearn function which first will scale the data, then will 
@@ -231,43 +233,45 @@ def set_classification_model(model_name = 'rf',
     if scaler == 'standardscaler':
         scl = StandardScaler()
 
-
     if model_name == 'svc_radial':
         if param_grid is None:
             param_grid = {'C': loguniform.rvs(0.1, 1e3, size=20),
                           'gamma': loguniform.rvs(0.0001, 1e-1, size=20)}
 
         ## model parameters
-        gs_svm_linear  = GridSearchCV(SVC(kernel='rbf'),
+        mlmodel  = GridSearchCV(SVC(kernel='rbf',
+                                          random_state = seed),
                                           param_grid,
                                           cv=cv,
                                           n_jobs=nworkers)
-        pipelinemodel = Pipeline([('scaler', scl), ('svr_linear', gs_svm_linear)])
-
     if model_name == 'xgb':
         if param_grid is None:
             param_grid = {
                     'min_child_weight': [1, 2, 4],
                     'gamma': [0.001,0.01,0.5, 1, 1.5, 2, 5],
                     'n_estimators': [int(x) for x in np.linspace(start = 50, stop = 500, num = 3)],
-                    'colsample_bytree': [0.7, 0.8],
+                    'subsample':[i/10.0 for i in range(6,10)],
+                    'colsample_bytree':[i/10.0 for i in range(6,10)],
                     'max_depth': [2,4,8,16,32],
-                    'reg_alpha': [1.1, 1.2, 1.3],
-                    'reg_lambda': [1.1, 1.2, 1.3],
-                    'subsample': [0.7, 0.8, 0.9]
+                    'reg_alpha':[1e-5, 1e-2, 0.1, 1, 100],
+
                     }
 
         xgbclass = xgb.XGBClassifier(objective="binary:logistic",
-                        random_state = 123
+                        random_state = seed
                 )
-        gs_xgb  = RandomizedSearchCV(xgbclass,
+        if len(list(param_grid.keys())) > 0:
+            gs_xgb  = RandomizedSearchCV(xgbclass,
                                param_grid,
                                cv=cv,
                                n_jobs=nworkers,
-                               n_iter = 50)
+                               n_iter = 100,
+                               random_state = seed)
 
-        pipelinemodel = Pipeline([('scaler', scl), ('xgb', gs_xgb)])
+            mlmodel = gs_xgb
 
+        else:
+            mlmodel = xgbclass
         
     if model_name == 'rf':
         if param_grid is None:
@@ -293,12 +297,17 @@ def set_classification_model(model_name = 'rf',
                         'min_samples_leaf': min_samples_leaf,
                         'bootstrap': bootstrap}
 
-        rf = RandomForestClassifier(random_state=123)
-        rf_random = RandomizedSearchCV(estimator = rf, param_distributions = param_grid,
-                                               n_iter = 100, cv = cv, verbose=0, random_state=123, n_jobs = 8)
+        rf = RandomForestClassifier(random_state=seed)
+        mlmodel = RandomizedSearchCV(estimator = rf, param_distributions = param_grid,
+                                               n_iter = 100, cv = cv,
+                                               verbose=0, random_state=seed, n_jobs = nworkers)
        
-    
-        pipelinemodel = Pipeline([('scaler', scl), ('rf', rf_random)])
+
+    if scale_data:
+        pipelinemodel = Pipeline([('scaler', scl), (model_name, mlmodel)])
+    else:
+        pipelinemodel = Pipeline([(model_name, mlmodel)])
+
 
     return pipelinemodel
     

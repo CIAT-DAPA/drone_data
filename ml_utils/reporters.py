@@ -128,6 +128,33 @@ class ClassificationReporter(object):
         with open(fn, "w") as outfile:
             outfile.write(json_object)
     
+    def remove_configuration(self, dictattrstoremove):
+
+        posfirstattr = self._finding_configuration_indices(dictattrstoremove)
+        self._remove_conf_using_indices(posfirstattr)
+
+    def _finding_configuration_indices(self, conftolookfor):
+        listkeys = list(conftolookfor.keys())
+
+        idattr = 0
+        posattr = [i for i, val in enumerate(self.reporter[listkeys[idattr]]) if val == conftolookfor[listkeys[idattr]]]
+        idattr = 1
+        while idattr<len(listkeys):
+            ## filtering
+            posattr = [i for i in posattr if self.reporter[listkeys[idattr]][i] == conftolookfor[listkeys[idattr]]]
+            idattr += 1
+            
+        return posattr
+
+    def _remove_conf_using_indices(self,indices):
+        for attr in list(self.reporter.keys()):
+            self.reporter[attr] = self._del_values_by_index(self.reporter[attr].copy(), indices)
+    
+    @staticmethod
+    def _del_values_by_index(listvalues, indices):
+        listvalues = [val for i, val in enumerate(listvalues) if i not in indices]
+        return listvalues
+
     def __init__(self, _reporter_keys = None) -> None:
         
         if _reporter_keys is None:
@@ -138,16 +165,28 @@ class ClassificationReporter(object):
 
 class DL_ClassReporter(ClassificationReporter):
     def n_models(self):
+        """
+        Number of models
+
+        Returns:
+            _type_: _description_
+        """
         breaks = self._get_breaks()
         return len(breaks)-1
     
     def _get_breaks(self):
+        """
+        Each model was trained and stored in a sequence, so here will get the position in which that sequence is restarted
+
+        Returns:
+            _type_: _description_
+        """
         splitpos = []
         for j,i in enumerate(self.reporter[self.iterationcolumn]):
             if i == 0:
                 splitpos.append(j)
-        if len(splitpos) == 1:
-            splitpos.append(len(self.reporter[self.iterationcolumn]))
+        #if len(splitpos) == 1:
+        splitpos.append(len(self.reporter[self.iterationcolumn]))
         return splitpos
     
     def get_data(self,index):
@@ -264,7 +303,7 @@ class CVReporter(object):
         return datafeatunique
         
 
-    def cv_groups(self, maxfeatures = None):
+    def cv_groups(self, maxfeatures = None, feature_attr = 'features', model_attr='modelname', model = None):
         
         uniqueresults = self.unique_attributes()
         uniqueresults = concatenate_lists(uniqueresults)
@@ -283,28 +322,56 @@ class CVReporter(object):
                                     for featname in list(self.reporter.reporter.keys())})
             
             groupsbycv.append(indvals)
-        
+            
+        ## filter grropus by number of features
         if maxfeatures is not None:
-            groupsbycv = [i for i in groupsbycv if len(i[0]['features']) == maxfeatures]
+            groupsbycv_c = []
+            for resultsgroup in groupsbycv:
+                if type(resultsgroup[0][feature_attr]) is str:
+                    featurelist = resultsgroup[0][feature_attr].split('-')
+                else:
+                    featurelist = resultsgroup[0][feature_attr]
+                    
+                if len(featurelist) == maxfeatures:
+                    groupsbycv_c.append(resultsgroup)
+                    
+            groupsbycv = groupsbycv_c
+        
+        if model is not None:
+            groupsbycv_c = []
+            for resultsgroup in groupsbycv:
+                modelname = resultsgroup[0][model_attr]
+                    
+                if modelname == model:
+                    groupsbycv_c.append(resultsgroup)
+                    
+            groupsbycv = groupsbycv_c
 
         return groupsbycv
 
-    def cv_summary(self, eval_metric = 'valaccuracy', maxfeatures = None):
+    def cv_summary(self, eval_metric = 'valaccuracy', **kwargs ):
         
-        cvgroups = self.cv_groups(maxfeatures = maxfeatures)
+        cvgroups = self.cv_groups(**kwargs)
         cvvals = []
-        for cvgroup in cvgroups:
-            cvval = np.mean([cvval[eval_metric] for cvval in cvgroup])
-            dictvalues = {i:cvgroup[0][i] for i in self.groupby}
-            dictvalues.update({eval_metric:cvval})
-            cvvals.append(dictvalues)
+        if len(cvgroups)>0:
         
+            for cvgroup in cvgroups:
+                cvval = np.mean([cvval[eval_metric] for cvval in cvgroup])
+                dictvalues = {i:cvgroup[0][i] for i in self.groupby}
+                dictvalues.update({eval_metric:cvval})
+                cvvals.append(dictvalues)
+
         return cvvals
     
-    def best_result(self, eval_metric = 'valaccuracy', maxfeatures = None):
-        cvgroups = self.cv_summary(eval_metric = eval_metric, maxfeatures = maxfeatures)
+    def best_result(self, eval_metric = 'valaccuracy', **kwargs):
         
-        return cvgroups[np.argmax([i[eval_metric] for i in cvgroups])]
+        cvgroups = self.cv_summary(eval_metric=eval_metric,**kwargs)
+        if len(cvgroups)>0:
+            bestresult = cvgroups[np.argmax([i[eval_metric] for i in cvgroups])]
+        else:
+            bestresult = {}
+            
+        return bestresult
     
     def __init__(self, reporter, groupby = None) -> None:
         
