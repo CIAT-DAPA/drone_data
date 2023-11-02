@@ -250,6 +250,14 @@ class DL_ClassReporter(ClassificationReporter):
 
         return datafeatunique
     
+    def look_up_specific_conf(self,configuration):
+        specificlocation = self._finding_configuration_indices(configuration)
+        attrsofinterest = {}
+        for attr in self._reporter_keys:
+            attrsofinterest[attr] = [self.reporter[attr][i] for i in specificlocation]
+            
+        return attrsofinterest
+        
     def __init__(self, _reporter_keys=None, iterationcolumn = 'iteration') -> None:
         super().__init__(_reporter_keys)
         self.iterationcolumn = iterationcolumn
