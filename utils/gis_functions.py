@@ -1136,7 +1136,7 @@ def centerto_edgedistances_fromxarray(xrdata, refband = None,
     #distvector, imgvalues = cartimg_topolar_transform(refimg, anglestep=anglestep, nathreshhold = nathreshhold)
     refimg[refimg == 0.0] = np.nan
     refimg[np.logical_not(np.isnan(refimg))] = 255
-    if np.isnan(refimg).sum() / (refimg.shape[0]*refimg.shape[1]) < .96:
+    try:
         if wrapper == 'circle':
             refimg[np.isnan(refimg)] = 0
             refimg = refimg.astype(np.uint8)
@@ -1145,7 +1145,7 @@ def centerto_edgedistances_fromxarray(xrdata, refband = None,
         elif wrapper == 'hull':
             c = getcenter_from_hull(refimg, buffernaprc = 15)
             r = None
-    else:
+    except:
         c = [refimg.shape[1]//2,refimg.shape[0]//2]
         r = None
     ## take 
