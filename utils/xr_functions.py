@@ -16,7 +16,7 @@ from .gis_functions import resample_xarray
 from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
 from .gis_functions import list_tif_2xarray
 
-from .image_functions import radial_filter, remove_smallpixels
+from .image_functions import radial_filter, remove_smallpixels,transformto_cielab
 
 from .decorators import check_output_fn
 from .data_processing import data_standarization, minmax_scale
@@ -291,6 +291,7 @@ def stack_as4dxarray(xarraylist,
                      resizeinter_method = 'nearest',
                      long_dimname = 'x',
                      lat_dimname = 'y',
+                     resize = True,
                      **kwargs):
     """
     this function is used to stack multiple xarray along a time axis 
@@ -329,14 +330,18 @@ def stack_as4dxarray(xarraylist,
     coordsvals = [[xarraylist[i].dims[xdim],
                    xarraylist[i].dims[ydim]] for i in range(len(xarraylist))]
 
-    if sizemethod == 'max':
-        sizex, sizexy = np.max(coordsvals, axis=0).astype(np.uint)
-    elif sizemethod == 'mean':
-        sizex, sizexy = np.mean(coordsvals, axis=0).astype(np.uint)
+    if resize:
+        if sizemethod == 'max':
+            sizex, sizexy = np.max(coordsvals, axis=0).astype(np.uint)
+        elif sizemethod == 'mean':
+            sizex, sizexy = np.mean(coordsvals, axis=0).astype(np.uint)
 
-    # transform each multiband xarray to a standar dims size
+        # transform each multiband xarray to a standar dims size
 
-    xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], interpolation=resizeinter_method, blur = False,**kwargs)
+        xarrayref = resize_3dxarray(xarraylist[0], [sizex, sizexy], interpolation=resizeinter_method, blur = False,**kwargs)
+    else:
+        xarrayref = xarraylist[0].copy()
+        
     xarrayref = xarrayref.assign_coords({axis_name : valuesaxis_names[0]})
     xarrayref = xarrayref.expand_dims(dim = {axis_name:1}, axis = new_dimpos)
 
@@ -828,3 +833,56 @@ def filter_3Dxarray_contourarea(xrdata,
                  nodata=np.nan)
 
     return mltxarray
+
+
+def calculate_lab_from_xarray(xrdata, rgbchannels = ['red_ms','green_ms','blue_ms'], dataformat = "CDHW", deepthdimname = 'date'):
+    """ function to convert RGB data into Lab space color 
+    https://scikit-image.org/docs/stable/api/skimage.color.html#skimage.color.rgb2lab
+
+    Args:
+        xrdata (_type_): xarray data
+        rgbchannels (list, optional): rgb channels names. Defaults to ['red_ms','green_ms','blue_ms'].
+        dataformat (str, optional): what is data xarray format. Defaults to "CDHW".
+        deepthdimname (str, optional): if the xarray has three dimensions, the name of the the depth dimension. Defaults to 'date'.
+
+    Returns:
+        xarray that include three new channels. L: light A: color from red to green  B: color from yellow to blue
+    """
+    
+    refdims = list(xrdata.dims.keys())
+    
+    if len(refdims) == 3:
+        dpos = dataformat.index('D')
+        dpos = dpos if dpos == 0 else dpos - 1
+        ndepth = len(xrdata[deepthdimname].values)
+        xrdate = []
+        for i in range(ndepth):
+            
+            xrdatad = xrdata.isel({deepthdimname:i})
+            xrdepthlist = calculate_lab_from_xarray(xrdatad)
+            xrdate.append(xrdepthlist)
+        
+        xrdate = stack_as4dxarray(xrdate, 
+                     axis_name = deepthdimname, 
+                     new_dimpos = dpos,
+                     valuesaxis_names = xrdata.date.values,
+                     resize = False)
+
+    else:
+        imgtotr = xrdata[rgbchannels].to_array().values
+        
+        imglab = transformto_cielab(imgtotr)
+        xrdate = [xrdata]
+        for labindex, labename in enumerate(['l','a','b']):
+            arrimg = imglab[:,:,labindex]
+            arrimg[np.isnan(arrimg)] = 0
+            xrimg = xarray.DataArray(arrimg)
+            prevdimnames = list(xrimg.dims)
+            refdimnames = list(xrdata.dims.keys())
+            xrimg.name = labename
+            xrimg = xrimg.rename({dname:refdimnames[i] for i,dname in enumerate(prevdimnames)})
+            xrdate.append(xrimg)
+        xrdate = xarray.merge(xrdate)
+            
+    return xrdate
+    

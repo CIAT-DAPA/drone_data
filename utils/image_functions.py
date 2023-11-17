@@ -12,6 +12,17 @@ from scipy.spatial import ConvexHull
 import warnings
 import cv2 as cv
 
+###
+def transformto_cielab(dataimg):
+    from skimage import io, color
+    
+    if dataimg.shape[0] == 3:
+        dataimg = dataimg.swapaxes(0,1).swapaxes(1,2)
+        
+    lab = color.rgb2lab(dataimg)
+    lab[lab == 0] = np.nan
+    
+    return lab
 
 # https://en.wikipedia.org/wiki/Histogram_equalization
 def hist_equalization(np2dimg):
