@@ -37,9 +37,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.svm import SVC
 
+
 def set_model(model_name = 'pls',
               scaler = 'standardscaler', 
               param_grid = None, 
+              scale_data = True,
               cv = 5, 
               nworkers = -1):
     
@@ -61,6 +63,9 @@ def set_model(model_name = 'pls',
         {'minmax', 'standardscaler', default: 'standardscaler'}
     param_grid: dict, optional
         grid parameters used for hyperparameters gird searching
+        
+    scale_data: boolean, optional
+        use scaler in the model
     cv: int
         k-folds for cross-validation
     nworkers: int
@@ -81,14 +86,10 @@ def set_model(model_name = 'pls',
             rdcomps = np.linspace(start = 1, stop = 50, num = 30)
             param_grid = [{'n_components':np.unique([int(i) for i in rdcomps])}]
 
-        gs_pls = GridSearchCV( PLSRegression(),
+        mlmodel = GridSearchCV( PLSRegression(),
                                 param_grid,
                                 cv=cv,
                                 n_jobs=nworkers)
-        if scaler == 'minmax':
-            scl = MinMaxScaler()
-    
-        pipelinemodel = Pipeline([('scaler', scl), ('pls', gs_pls)])
 
     if model_name == 'svr_linear':
         if param_grid is None:
@@ -96,24 +97,22 @@ def set_model(model_name = 'pls',
                           'gamma': loguniform.rvs(0.0001, 1e-1, size=20)}
 
         ## model parameters
-        gs_svm_linear  = GridSearchCV(SVR(kernel='linear'),
+        mlmodel  = GridSearchCV(SVR(kernel='linear'),
                                           param_grid,
                                           cv=cv,
                                           n_jobs=nworkers)
-        pipelinemodel = Pipeline([('scaler', scl), ('svr_linear', gs_svm_linear)])
+
 
     if model_name == 'svr_radial':
         if param_grid is None:
             param_grid = {'C': loguniform.rvs(0.1, 1e3, size=20),
                           'gamma': loguniform.rvs(0.0001, 1e-1, size=20)}
         ## model parameters
-        gs_svm_radial  = GridSearchCV(SVR(kernel='rbf'),
+        mlmodel  = GridSearchCV(SVR(kernel='rbf'),
                                           param_grid,
                                           cv=cv,
                                           n_jobs=nworkers)
 
-        pipelinemodel = Pipeline([('scaler', scl), 
-        ('svr_radial', gs_svm_radial)])
 
 
     if model_name == 'xgb':
@@ -133,15 +132,13 @@ def set_model(model_name = 'pls',
                         eval_metric="rmse",
                         random_state = 123
                 )
-        gs_xgb  = RandomizedSearchCV(xgbreg,
+        mlmodel  = RandomizedSearchCV(xgbreg,
                                param_grid,
                                cv=cv,
                                n_jobs=nworkers,
                                n_iter = 50)
 
-        pipelinemodel = Pipeline([('scaler', scl), ('xgb', gs_xgb)])
-
-        
+       
     if model_name == 'rf':
         if param_grid is None:
             param_grid = { 
@@ -154,12 +151,11 @@ def set_model(model_name = 'pls',
             #'max_leaf_nodes': [50, 100, 200]
             #'criterion' :['gini', 'entropy']
             }
-        gs_rf = GridSearchCV( RandomForestRegressor(random_state = 42),
+        mlmodel = GridSearchCV( RandomForestRegressor(random_state = 42),
                                 param_grid,
                                 cv=5,
                                 n_jobs=-1)
     
-        pipelinemodel = Pipeline([('scaler', scl), ('rf', gs_rf)])
 
     
     if model_name == 'lasso':
@@ -167,30 +163,29 @@ def set_model(model_name = 'pls',
             alphas = np.logspace(-4, -0.5, 30)
             param_grid = [{"alpha": alphas}]
             
-        gs_lasso  = GridSearchCV(Lasso(random_state=0, max_iter=4000),
+        mlmodel  = GridSearchCV(Lasso(random_state=0, max_iter=4000),
                                 param_grid,
                                 cv=cv,
                                 n_jobs=nworkers)
-        
-        pipelinemodel = Pipeline([('scaler', scl), ('lasso', gs_lasso)])
-    
+
     if model_name == 'ridge':
         if param_grid is None:
             alphas = np.logspace(-4, -0.5, 30)
             param_grid = [{"alpha": alphas}]
             
-        gs_lasso  = GridSearchCV(Ridge(random_state=0, max_iter=4000),
+        mlmodel  = GridSearchCV(Ridge(random_state=0, max_iter=4000),
                                 param_grid,
                                 cv=cv,
                                 n_jobs=nworkers)
         
-        pipelinemodel = Pipeline([('scaler', scl), ('ridge', gs_lasso)])
     
+    if scale_data:
+        pipelinemodel = Pipeline([('scaler', scl), (model_name, mlmodel)])
+    else:
+        pipelinemodel = Pipeline([(model_name, mlmodel)])
+
 
     return pipelinemodel
-
-
-
 
 def set_classification_model(model_name = 'rf',
               scaler = 'standardscaler',
