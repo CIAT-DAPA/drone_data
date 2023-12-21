@@ -27,8 +27,27 @@ from .mc_imagery import calculate_vi_fromarray
 import re
 import pickle
 
+from typing import List, Optional
+
 
 def drop_bands(xarraydata, bands):
+    
+    """
+    Drops specified bands from an xarray dataset.
+    
+    Parameters:
+    ----------
+    xarraydata : xarray.Dataset
+        The xarray dataset from which bands will be dropped.
+    bands : list
+        List of bands to be dropped.
+    
+    Returns:
+    -------
+    xarray.Dataset
+        The modified xarray dataset after dropping the bands.
+    """
+    
     for i in bands:
         xarraydata = xarraydata.drop(i)
     
@@ -60,6 +79,25 @@ def filter_list(list1, list2):
 
 
 def normalized_difference(array1, array2, namask=np.nan):
+    
+    """
+    Calculates the normalized difference between two arrays.
+
+    Parameters:
+    ----------
+    xarraydata : numpy.ndarray
+        First input array.
+    array2 : numpy.ndarray
+        Second input array.
+    namask : numeric, optional
+        Value to be treated as no-data (NaN) in the calculations.
+
+    Returns:
+    -------
+    numpy.ndarray
+        Array of normalized difference values.
+    """
+    
     if np.logical_not(np.isnan(namask)):
         array1[array1 == namask] = np.nan
         array2[array2 == namask] = np.nan
@@ -69,23 +107,66 @@ def normalized_difference(array1, array2, namask=np.nan):
 
 
 def get_files_paths(path, bands):
-    try:
+    
+    """
+    Retrieves file paths for images corresponding to specified bands.
 
-        imgfiles = glob.glob(path + "*.tif")
-        
-        imgfiles_filtered = filter_list(imgfiles, bands)
-        if "edge" in bands:
-            imgfiles_filtered = _solve_red_edge_order(imgfiles_filtered, bands)
+    Parameters:
+    ----------
+    path : str
+        Directory path where image files are located.
+    bands : list of str
+        List of spectral bands to filter the image files.
 
-        return imgfiles_filtered
+    Returns:
+    -------
+    list of str
+        List of filtered image file paths.
 
-    except ValueError:
-        print("file path doesn't exist")
+    Raises:
+    ------
+    FileNotFoundError
+        If the specified file path does not exist.
+    """
+    
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"file path {path} doesn't exist")
+    
+    
+    imgfiles = glob.glob(path + "*.tif")
+    
+    imgfiles_filtered = filter_list(imgfiles, bands)
+    if "edge" in bands:
+        imgfiles_filtered = _solve_red_edge_order(imgfiles_filtered, bands)
 
+    return imgfiles_filtered
+
+    
 
 
 def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, overwrite = False):
+    """
+    Calculates vegetation indices from an xarray dataset.
 
+    Parameters:
+    ----------
+    xarraydata : xarray.Dataset
+        The xarray dataset from which to calculate the vegetation index.
+    vi : str, default 'ndvi'
+        Name of the vegetation index to be calculated.
+    expression : str, optional
+        Custom expression for calculating the vegetation index.
+    label : str, optional
+        Label for the new vegetation index data in the dataset.
+    overwrite : bool, default False
+        If True, overwrite the existing data; otherwise, skip if already present.
+
+    Returns:
+    -------
+    xarray.Dataset
+        The xarray dataset with the new vegetation index data added.
+    """
+    
     variable_names = list(xarraydata.keys())
     namask = xarraydata.attrs['nodata']
     vidata, label = calculate_vi_fromarray(xarraydata.to_array().values, 
@@ -108,13 +189,31 @@ def calculate_vi_fromxarray(xarraydata, vi='ndvi', expression=None, label=None, 
 
 def multiband_totiff(xrdata, filename, varnames=None):
 
-    #varnames = self._checkbandstoexport(varnames)
-    metadata = xrdata.attrs
+    """
+    Converts multiband xarray data to a TIFF file.
 
+    Parameters:
+    ----------
+    xrdata : xarray.Dataset
+        The xarray dataset to be exported.
+    filename : str
+        The file name for the output TIFF file.
+    varnames : list of str, optional
+        Names of the variables (bands) to be included in the TIFF file. If not provided, 
+        all bands will be included.
+
+    Returns:
+    -------
+    None
+    """
+    
+    metadata = xrdata.attrs
+    
+    suffix = (len(filename) + 1)
+    
     if filename.endswith('tif'):
         suffix = filename.index('tif')
-    else:
-        suffix = (len(filename) + 1)
+       
 
     if len(varnames) > 1:
         metadata['count'] = len(varnames)
@@ -127,53 +226,123 @@ class UAVPlots():
 
 def check_boundarytype(boundsvariable):
     
-    if type(boundsvariable ) == gpd.GeoDataFrame:
+    """
+    Checks and converts the boundary variable to a standard GeoJSON-like dict format.
+
+    Parameters:
+    ----------
+    boundsvariable : gpd.GeoDataFrame, gpd.GeoSeries, or list of dict
+        The boundary variable to be checked and standardized.
+
+    Returns:
+    -------
+    list of dict
+        The boundary variable in a standard format.
+
+    Raises:
+    ------
+    ValueError
+        If the boundary object is not in a recognized format.
+    """
+    
+    if isinstance(boundsvariable, gpd.GeoDataFrame):
         if boundsvariable.shape[0]> 1:
-            print('the data frame has more than 1 feature, only the first one will be taken')
+            print('The GeoDataFrame has more than 1 feature; only the first one will be used.')
             
-        boundsvariable = [boundsvariable.reset_index(
+        return [boundsvariable.reset_index(
             ).__geo_interface__['features'][0]['geometry']]
     
-    elif type(boundsvariable) == gpd.geoseries.GeoSeries:
-        boundsvariable = [boundsvariable.reset_index(
+    elif isinstance(boundsvariable, gpd.geoseries.GeoSeries):
+        return [boundsvariable.reset_index(
             )[0].__geo_interface__['features'][0]['geometry']]
         
-    elif type(boundsvariable[0]) == dict:
-        boundsvariable = boundsvariable
-    else:
-        raise ValueError("the boundary object must be a GeoJSON-like dict object")
+    elif isinstance(boundsvariable, list) and all(isinstance(item, dict) for item in boundsvariable):
+        return boundsvariable
     
-    return boundsvariable
+    raise ValueError("The boundary object must be a GeoDataFrame, GeoSeries, or a list of GeoJSON-like dict objects.")
+    
 
 class DroneData:
     """
-    Handles UAV images using xarray package.
-    
-        Attributes
+    This class handles UAV imagery using the xarray package and provides methods for data manipulation, 
+    analysis, and visualization.
+
+    Attributes:
     ----------
-    drone_data : xarray
-        UAV image in xarray format.
-    variable_names : list str
-        Spectral bands that compose the uav iamge.
-    
-
-        Methods
-    -------
-    _checkbandstoexport(bands)
-        Internal method to validate and filter bands for export.
-    add_layer(variable_name, fn=None, imageasarray=None)
-        Add a 2D layer to the drone data.
-    data_astable()
-        Convert the drone data to a pandas DataFrame.
-    calculate_vi(vi='ndvi', expression=None, label=None)
-        Calculate vegetation indices using predefined or custom equations.
-    rf_classification(model, features=None)
-        Perform random forest classification on the drone data.
-    clusters(nclusters=2, method="kmeans", p_sample=10, pcavariance=0.5)
-        Perform clustering on the drone data.
-
+    drone_data : xarray.Dataset
+        An xarray dataset representing the UAV image data.
+    variable_names: list of str
+        A list of strings representing the spectral bands in the UAV image.
+    available_vi: dict
+        A dictionary of vegetation indices that can be calculated from the spectral imagery.
     """
 
+    def __init__(self, inputpath: str, bands: Optional[List[str]] = None,
+                 multiband_image: bool = False, bounds: Optional[dict] = None):
+        
+        """
+        Initialize the DroneData class with the given parameters.
+
+        Parameters:
+        ----------
+        inputpath : str
+            Path where the image data is located.
+        bands : list of str, optional
+            Names of the spectral bands.
+        multiband_image : bool, optional
+            Whether the data is a multistack object or composed of separated bands.
+        bounds : dict, optional
+            GeoDataFrame, GeoSeries, or a list of GeoJSON-like dict to clip the image.
+        """
+        
+        self._bands = ['red', 'green', 'blue'] if bands is None else bands
+        self._clusters = np.nan
+        self._tiles_pols = None
+        self._files_path = self._determine_files_path(inputpath, multiband_image)
+        self.bounds_asjson = check_boundarytype(bounds)
+        
+        if len(self._files_path)>0:
+            self.drone_data = self.tif_toxarray(multiband_image, bounds=self.bounds_asjson)
+        else:
+            raise FileNotFoundError('No file path was found at the specified input path.')
+            
+
+    def _determine_files_path(self, inputpath: str, multiband_image: bool) -> List[str]:
+        """
+        Determine the file paths.
+
+        Parameters:
+        ----------
+        inputpath : str
+            The directory path to search for image files.
+        multiband_image : bool
+            Whether the image data is in multiband format.
+
+        Returns:
+        -------
+        List[str]
+            A list of file paths for the drone data.
+
+        Raises:
+        ------
+        ValueError
+            If no TIFF files are found in the specified directory.
+        """
+        if not multiband_image:
+            # If the data is not multiband, find individual files for each band.
+            return get_files_paths(inputpath, self._bands)
+        else:
+            # If the data is multiband, expect a single TIFF file.
+            try:
+                imgfiles = glob.glob(inputpath + "*.tif")[0]
+            except:
+                raise ValueError(f"No TIFF files found in the directory: {inputpath}")
+                    
+            return [imgfiles for i in range(len(self._bands))]
+                
+            
+
+    
     @property
     def available_vi():
         return VEGETATION_INDEX
@@ -309,8 +478,23 @@ class DroneData:
                                      bands,
                                      long=long_direction)
 
-    def tif_toxarray(self, multiband=False, bounds = None):
+    def tif_toxarray(self, multiband: bool = False, bounds: Optional[dict] = None) -> xarray.Dataset:
+        
+        """
+        Converts TIFF images to an xarray dataset.
 
+        Parameters:
+        ----------
+        multiband : bool, optional
+            Whether the image data is in multiband format.
+        bounds : dict, optional
+            GeoJSON-like dictionary to clip the image.
+
+        Returns:
+        -------
+        xarray.Dataset
+            The xarray dataset created from the TIFF images.
+        """
         riolist = []
         imgindex = 1
         nodata = None
@@ -319,7 +503,7 @@ class DroneData:
         for band, path in zip(self._bands, self._files_path):
             
             with rasterio.open(path) as src:
-
+                
                 tr = src.transform
                 nodata = src.nodata
                 metadata = src.profile.copy()
@@ -480,63 +664,5 @@ class DroneData:
 
         return xrmasked
 
-    def __init__(self,
-                 inputpath,
-                 bands=None,
-                 multiband_image=False,
-                 #roi = None,
-                 #table=False,
-                 bounds = None):
-        """
-        Parameters:
-        ----------
-        inputpath: string
-            path where the information is located
-
-        bands: list o strings, optional
-            which names will have the channels
-
-        multiband_image: Boolean, optioanl
-            a boolean to treat the data as a multistack object or the data is composed by 
-            separated bands
-
-        bounds:  GeoJSON-like dict, optional
-            shapes that will be used to clip the image using rasterio.mask module
-
-        """
-        if bands is None:
-            self._bands = ['red', 'green', 'blue']
-        else:
-            self._bands = bands
-
-        
-        self._clusters = np.nan
-        self._tiles_pols = None
-
-        if not multiband_image:
-            self._files_path = get_files_paths(inputpath, self._bands)
-
-        else:
-            if inputpath.endswith('.tif'):
-                self._files_path = [inputpath for i in range(len(self._bands))]
-            else:
-                try:
-                    imgfiles = glob.glob(inputpath + "*.tif")[0]
-                except:
-                    raise ValueError(f"There are no tiff files in this dir {inputpath}")
-                    
-                self._files_path = [imgfiles for i in range(len(self._bands))]
-
-        self.bounds_asjson = check_boundarytype(bounds)
-        
-        if len(self._files_path)>0:
-            self.drone_data = self.tif_toxarray(multiband_image, bounds=self.bounds_asjson)
-        else:
-            raise ValueError('Any file path was found in the input path')
-            
-        #if roi is not None:
-        #    self.clip_using_gpd(roi, replace = True)
-
-        #if table:
-            #self._data, self._nanindex = self.data_astable()
+    
 

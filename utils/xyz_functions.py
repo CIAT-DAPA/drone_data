@@ -19,9 +19,30 @@ from sklearn.neighbors import KNeighborsRegressor
 from pykrige.ok import OrdinaryKriging
 import shapely
 
+from typing import List, Optional, Union
 
-def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
+def getchunksize_forxyzfile(file_path: str, bb: tuple,buffer: float, step: int = 100):
+    
+    """
+    Determines the chunk size for reading an XYZ file based on bounding box and buffer.
 
+    Parameters:
+    ----------
+    file_path : str
+        Path to the XYZ file.
+    bb : tuple
+        Spatial bounding box (min_x, min_y, max_x, max_y).
+    buffer : float
+        Buffer distance around the bounding box.
+    step : int, optional
+        Step size for checking the file.
+
+    Returns:
+    -------
+    list
+        Starting row index and chunk size.
+    """
+    
     cond1 = True
     idinit = 0
     idx2 = step
@@ -53,8 +74,25 @@ def getchunksize_forxyzfile(file_path, bb,buffer, step = 100):
     return ([initfinalpos[0], idxdif])
 
 
-def filterdata_insidebounds(chunks, bb, buffer= 0.0):
+def filterdata_insidebounds(chunks, bb: tuple, buffer: float = 0.0):
+    """
+    Generator to filter chunks of data based on bounding box and buffer.
 
+    Parameters:
+    ----------
+    chunks : iterable
+        Iterable chunks of data.
+    bb : tuple
+        Bounding box (min_x, min_y, max_x, max_y).
+    buffer : float, optional
+        Buffer distance around the bounding box.
+
+    Yields:
+    ------
+    DataFrame
+        Filtered chunk of data.
+    """
+    
     for chunk in chunks:
         mask = np.logical_and(
             (np.logical_and((chunk.iloc[:,1] > (bb[1]-buffer)) ,(chunk.iloc[:,1] < (bb[3]+buffer)))),
@@ -68,55 +106,63 @@ def filterdata_insidebounds(chunks, bb, buffer= 0.0):
 
 def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, sp_res = 0.005, ext='.xyz'):
     """
-    a function to read a cloud points file using spatial boundaries
+    Reads cloud points from an XYZ file using spatial boundaries.
 
     Parameters:
     ----------
-    file_path: str
-        3d point cloud file location
-    bb: tuple
-        spatial bounding box
-    sp_res: float, optional
-        the camera spatial resolution in meters, default 0.005
-    ext: str, optional
-        which is the file extension, default '.xyz'
+    file_path : str
+        Path to the XYZ file or directory containing XYZ files.
+    bb : tuple
+        Spatial bounding box (min_x, min_y, max_x, max_y).
+    buffer : float, optional
+        Buffer around the bounding box.
+    sp_res : float, optional
+        Spatial resolution in meters.
+    ext : str, optional
+        File extension of the cloud points file.
 
-    Return:
-    ----------
-    Pandas dataframe with columns (x, y , z , r, g , b)
+    Returns:
+    -------
+    pd.DataFrame
+        DataFrame containing the cloud points.
 
+    Raises:
+    ------
+    ValueError
+        If no intersection is found in the file.
     """
-    width = abs(bb[0]-bb[2]) + buffer
-    heigth = abs(bb[1]-bb[3]) + buffer
+    
+    width, heigth = abs(bb[0]-bb[2]) + buffer, abs(bb[1]-bb[3]) + buffer
+
     mindata = int(heigth/sp_res * width/sp_res)
     ### junp every step onf lines in the point cloud file
     step = int(mindata*0.015)
 
-    undermindata = True
+    
     if file_path.endswith('.xyz'):
         folders = os.path.split(file_path)
-        file_path = folders[0]
+        file_path = os.path.dirname(file_path)#folders[0]
         xyzfilenames = [folders[-1]]
     else:
-        file_pathfn = os.listdir(file_path)
-        xyzfilenames = [i for i in file_pathfn if i.endswith(ext)]
+        xyzfilenames = [i for i in os.listdir(file_path) if i.endswith(ext)]
     
     count = 0
     dfp = []
     sizefiles = 0
+    undermindata = True
+    
     while undermindata:
-
+        tmpfilepath = os.path.join(file_path,xyzfilenames[count])
         firstrow,chunksize = getchunksize_forxyzfile(
-            os.path.join(file_path,xyzfilenames[count]), bb,buffer, step)
+            tmpfilepath, bb,buffer, step)
         
         if chunksize>0:
-            chunks = pd.read_csv(
-                os.path.join(file_path,xyzfilenames[count]),
+            chunks = pd.read_csv(tmpfilepath,
                 skiprows=firstrow, chunksize=chunksize, header=None, sep = " ")
             
             df = pd.concat(filterdata_insidebounds(chunks, bb, buffer))
             dfp.append(df)
-            sizefiles = len(df) + sizefiles
+            sizefiles += len(df)
         
         if count >=(len(xyzfilenames)-1) or sizefiles>mindata:
            undermindata = False
@@ -196,37 +242,51 @@ def from_cloudpoints_to_xarray(dfpointcloud,
                                ):
 
     """
-    the point cloud is a 3D representated as points with coordinates in xand y, and with values in a third axis z. This function
-    transform the 3D representation to a 2D image. To obtain this, a rasterize processes is applied. The rasterization can be 
-    obtained from a vextorization or by spatial interpolation.
+    Transforms 3D point cloud data into a 2D image representation using rasterization 
+    or spatial interpolation.
 
     Parameters:
     ----------
-    dfpointcloud: list
-        a list that contains all the oint cloud data frames to be processed
-    bounds: polygon
-        this is a geopandas geometry that will be used boundaries
-    coords_system: str
-        Coordinates system reference
-    spatial_res: float
-        Spatial reolution that the image will have in meters, default 0.01
-    interpolate: boolean
-        If it is True, an interpolation method will be applied, if not a rasterize (averagering points that intersect a cell) method is gonna be held.
-    
-    Return:
-    ----------
-    xarray
+    dfpointcloud : list
+        A list containing all the point cloud data frames to be processed.
+    bounds : polygon
+        Geopandas geometry used as boundaries.
+    coords_system : str
+        Coordinate system reference.
+    columns_name : list of str, optional
+        Names of the columns in point cloud data frames.
+    spatial_res : float, optional
+        Spatial resolution of the output image in meters.
+    dimension_name : str, optional
+        Name of the new dimension in the resulting xarray.
+    newdim_values : list, optional
+        New values for the dimension if renaming is required.
+    interpolate : bool, optional
+        If True, apply spatial interpolation; otherwise, rasterize.
+    inter_method : str, optional
+        Interpolation method to use.
+    knn : int, optional
+        Number of nearest neighbors for KNN interpolation.
+    weights : str, optional
+        Weighting method for interpolation.
+    variogram_model : str, optional
+        Variogram model for interpolation.
 
+    Returns:
+    -------
+    xarray.DataArray or xarray.Dataset
+        The transformed 2D image data as an xarray object.
     """
+
     trans, imgsize = transform_frombb(bounds, spatial_res)
     totallength = len(columns_name)+2
     xarraylist = []
-    for j in range(len(dfpointcloud)):
+    for j, df in enumerate(dfpointcloud):
         list_rasters = []
-        xycoords = dfpointcloud[j][[0,1]].values.copy()
+        xycoords = df[[0,1]].values.copy()
 
         for i in range(2,totallength):
-            valuestorasterize = dfpointcloud[j].iloc[:,[i]].iloc[:, 0].values
+            valuestorasterize = df.iloc[:,[i]].iloc[:, 0].values
             
             if interpolate:
                 rasterinterpolated = points_rasterinterpolated(
@@ -238,7 +298,7 @@ def from_cloudpoints_to_xarray(dfpointcloud,
                                variogram_model = variogram_model)
             else:
                 rasterinterpolated = rasterize_using_bb(valuestorasterize, 
-                                                    dfpointcloud[j].geometry, 
+                                                    df.geometry, 
                                                     transform = trans, imgsize =imgsize)
 
             
@@ -462,7 +522,65 @@ class CloudPoints:
         transform the cloud points file to a geospatial raster
     """
 
+    def __init__(self, 
+                    xyzfile: Union[str, list(str)],
+                    gpdpolygon: Union[gpd.GeoSeries, gpd.GeoDataFrame, shapely.geometry.Polygon],
+                    buffer: float = 0.1,
+                    spatial_res: float = 0.01,
+                    crs: int = 32654,
+                    variables: List(str) = ["z", "red","green", "blue"],
+                    verbose: bool = False,
+                    ext: str = '.xyz'):
 
+            """
+            Initialize the CloudPoints class with given parameters.
+
+            Parameters:
+            ----------
+            xyzfile : str or List[str]
+                Path(s) to the XYZ file(s).
+            gpdpolygon : gpd.GeoSeries, gpd.GeoDataFrame, or shapely.geometry.Polygon
+                Geopandas geometry or Shapely Polygon defining the region of interest.
+            buffer : float, optional
+                Buffer distance to apply to the region of interest.
+            spatial_res : float, optional
+                Spatial resolution for processing.
+            crs : int, optional
+                Coordinate reference system code.
+            variables : List[str], optional
+                Names of the variables in the XYZ file.
+            verbose : bool, optional
+                Enables verbose output.
+            ext : str, optional
+                File extension for the XYZ files.
+
+            Returns:
+            -------
+            None
+            """
+            
+            self._crs =  crs     
+            self.variables_names = variables
+
+            self.xyzfile = xyzfile if isinstance(xyzfile, list) else [xyzfile]
+
+            if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
+                gpdpolygon = gpdpolygon.reset_index()["geometry"][0]
+            
+            try:
+                assert (type(gpdpolygon) is shapely.Polygon)
+            except:
+                assert (type(gpdpolygon) is shapely.geometry.polygon.Polygon)
+                
+            self.boundaries = gpdpolygon.bounds
+            self.geometry = gpdpolygon
+            self.buffer = buffer
+            self.spatial_res = spatial_res
+            self.verbose = verbose
+            self._xyz_file_suffix = ext
+            self._cloud_point()
+        
+    
     @property
     def cloud_points(self):
         return self._point_cloud
@@ -484,35 +602,38 @@ class CloudPoints:
         self._point_cloud =  cllist   
 
 
-    def to_xarray(self, sp_res = 0.01, 
-                  newdim_values = None, 
-                  interpolate = False, 
-                  inter_method = "KNN",
-                  **kargs):
+    def to_xarray(self, sp_res: float = 0.01, newdim_values = None, 
+                  interpolate: bool = False, 
+                  inter_method: str = "KNN",
+                  **kargs) -> xarray.DataArray:
         """
-        This function will create a spatial raster with the cloud points
-        the spatial image can be obtained by rasterizing the vector points, or applying 
-        a spatial interpolation 
+        Converts cloud points to a geospatial raster xarray.
 
         Parameters:
         ----------
-        sp_res: float, optional
-            final spatial resolution used for vector rasterization
-        newdim_values: str, optional
-            reasign new names for the xarray dimensions
-        interpolate: boolean, optional
-            which method will be applied to get the spatial image 
-            ['rasterize', 'interpolation'], default rasterize
-        inter_method: str, optional
-            Set the interpolation method, currently there are available
-             k-nearest neighbors 'KNN" and Ordinary-Kriging 'ordinary_kriging'
-        
-        Returns:
-        ----------
-        xarray file that contains the raster image
+        sp_res : float, optional
+            Final spatial resolution used for vector rasterization.
+        newdim_values : dict, optional
+            Reassign new names for the xarray dimensions.
+        interpolate : bool, optional
+            Whether to apply spatial interpolation to create the raster.
+        inter_method : str, optional
+            Interpolation method to use ('KNN' or 'ordinary_kriging').
 
+        Returns:
+        -------
+        xarray.DataArray
+            Rasterized spatial image as an xarray DataArray.
+
+        Raises:
+        ------
+        ValueError
+            If an unsupported interpolation method is provided.
         """
         
+        if interpolate and inter_method not in ["KNN", "ordinary_kriging"]:
+            raise ValueError(f"Unsupported interpolation method: {inter_method}")
+
         self.twod_image = from_cloudpoints_to_xarray(self.cloud_points,
                                    self.geometry.bounds, 
                                    self._crs,
@@ -526,63 +647,67 @@ class CloudPoints:
 
         return self.twod_image
 
-    def remove_baseline(self, method= None, 
-                        cloud_reference = 0, scale_height = 100, 
-                        applybsl = True,baselineval = None,**kargs):
-        if method is None:
-            method = "max_probability"
+    def remove_baseline(self, method: Optional[str] = None, 
+                        cloud_reference: int = 0, scale_height:  int = 100, 
+                        applybsl: bool = True, baselineval: float = None,**kargs):
         
-        if baselineval is None:
-            bsl = get_baseline_altitude(self.cloud_points[cloud_reference].iloc[:,0:6], method=method , **kargs)
-        else:
-            bsl = baselineval
+        """
+        Removes the baseline altitude from the cloud points.
 
+        Parameters:
+        ----------
+        method : str, optional
+            Method to determine the baseline altitude ('max_probability' or other).
+        cloud_reference : int, optional
+            Index of the cloud points used as the reference for baseline calculation.
+        scale_height : int, optional
+            Scaling factor for the height adjustment.
+        applybsl : bool, optional
+            Whether to apply the baseline adjustment to the cloud points.
+        baselineval : float, optional
+            Pre-defined baseline value to use.
+
+        Returns:
+        -------
+        None
+        """
+
+        method = method or "max_probability"
+        bsl = get_baseline_altitude(self.cloud_points[cloud_reference].iloc[:,0:6], 
+                                    method=method , **kargs) if baselineval is None else baselineval
         self._bsl = bsl
         #print("the baseline used was {}".format(bsl))
         if applybsl:
-            for i in range(len(self.cloud_points)):
-                data = self.cloud_points[i].copy()
-                data = data.loc[data.iloc[:,2]>=bsl,:]
-                data.iloc[:,2] = (data.iloc[:,2].values-bsl)*scale_height
+            for i, data in enumerate(self.cloud_points):
+                
+                adjusted_data = self._adjust_for_baseline(data, bsl, scale_height)
 
-                self.cloud_points[i] = data
+                self.cloud_points[i] = adjusted_data
 
     def plot_2d_cloudpoints(self, index = 0, figsize = (10,6), xaxis = "latitude",fontsize = 12):
         return plot_2d_cloudpoints(self.cloud_points[index], figsize, xaxis,fontsize=fontsize)
 
-    def __init__(self, 
-                    xyzfile,
-                    gpdpolygon,
-                    buffer = 0.1,
-                    spatial_res = 0.01,
-                    crs = 32654,
-                    variables = ["z", "red","green", "blue"],
-                    verbose = False,
-                    ext = '.xyz'):
+    def _adjust_for_baseline(self, data: pd.DataFrame, baseline: float, scale_height: int) -> pd.DataFrame:
+        """
+        Adjusts the cloud points data by removing the baseline altitude.
 
-        self._crs =  crs     
-        
-        self.variables_names = variables
+        Parameters:
+        ----------
+        data : pd.DataFrame
+            Cloud points data.
+        baseline : float
+            Baseline altitude to be removed.
+        scale_height : int
+            Scaling factor for height adjustment.
 
-        if type(xyzfile) != list:
-            xyzfile = [xyzfile]
-
-        if (type(gpdpolygon) is gpd.GeoSeries) or (type(gpdpolygon) is gpd.GeoDataFrame):
-            gpdpolygon = gpdpolygon.reset_index()["geometry"][0]
-        
-        try:
-            assert (type(gpdpolygon) is shapely.Polygon)
-        except:
-            assert (type(gpdpolygon) is shapely.geometry.polygon.Polygon)
-            
-        self.boundaries = gpdpolygon.bounds
-        self.xyzfile = xyzfile
-        self.geometry = gpdpolygon
-        self.buffer = buffer
-        self.spatial_res = spatial_res
-        self.verbose = verbose
-        self._xyz_file_suffix = ext
-        self._cloud_point()
+        Returns:
+        -------
+        pd.DataFrame
+            Adjusted cloud points data.
+        """
+        adjusted_data = data.loc[data.iloc[:,2]>=baseline,:].copy()
+        adjusted_data.iloc[:, 2] = (adjusted_data.iloc[:,2].values-baseline)*scale_height
+        return adjusted_data
 
 
 
