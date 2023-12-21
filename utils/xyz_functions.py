@@ -499,7 +499,7 @@ def points_rasterinterpolated(points, transform, rastershape, inter_method = 'KN
     return rastinterp
                 
 
-
+from typing import List
 class CloudPoints:
     """
     A class used to process XYZ files, this reads the file and then based on a boundary vector file
@@ -523,12 +523,12 @@ class CloudPoints:
     """
 
     def __init__(self, 
-                    xyzfile: Union[str, list(str)],
+                    xyzfile: Union[str, list],
                     gpdpolygon: Union[gpd.GeoSeries, gpd.GeoDataFrame, shapely.geometry.Polygon],
                     buffer: float = 0.1,
                     spatial_res: float = 0.01,
                     crs: int = 32654,
-                    variables: List(str) = ["z", "red","green", "blue"],
+                    variables: List[str] = ["z", "red","green", "blue"],
                     verbose: bool = False,
                     ext: str = '.xyz'):
 

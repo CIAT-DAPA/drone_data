@@ -22,6 +22,16 @@ from .drone_data import calculate_vi_fromxarray
 from .drone_data import DroneData
 from .general import MSVEGETATION_INDEX
 
+from typing import List, Optional, Union
+
+import tqdm
+import random
+import itertools
+
+##
+RGB_BANDS = ["red","green","blue"] ### this order is because the rgb uav data is stacked
+MS_BANDS = ['blue', 'green', 'red', 'edge', 'nir']
+
 def run_parallel_mergemissions_perpol(j, bbboxfile, rgb_path = None,
                                       ms_path=None, xyz_path=None,  
                         featurename =None, output_path=None, export =True, 
@@ -202,30 +212,44 @@ def run_parallel_preprocessing_perpolygon(
 
 ##########
 
-def stack_multisource_data(roi,ms_data = None, 
-                           rgb_data = None, pointclouddata = None, 
-                           bufferdef = None, rgb_asreference = True, 
-                           resamplemethod = 'nearest'):
+def stack_multisource_data(roi,ms_data: Optional[DroneData] = None, 
+                           rgb_data: Optional[DroneData] = None, 
+                           pointclouddata: Optional[xarray.DataArray] = None, 
+                           bufferdef: Optional[float] = None, 
+                           rgb_asreference: bool = True, 
+                           resamplemethod: str = 'nearest'):
+    
     """
-    a function to stack multiple UAV source data, curretnly it can merge data from MultiSpectral, RGB, and pointcloud data.
+    Stacks multiple UAV source data (Multispectral, RGB, Point Cloud) into a single dataset.
+
+    Parameters:
+    ----------
+    roi : Polygon or similar
+        Region of interest for clipping the data.
+    ms_data : DroneData, optional
+        Multispectral data.
+    rgb_data : DroneData, optional
+        RGB data from a high-definition camera.
+    pointclouddata : xarray.DataArray, optional
+        2D point cloud image data.
+    bufferdef : float, optional
+        Buffer definition for clipping. (Explain its usage more clearly)
+    rgb_asreference : bool, optional
+        Use RGB data as the reference for alignment if True.
+    resamplemethod : str, optional
+        Method for resampling ({"linear", "nearest", "zero", "slinear", "quadratic", "cubic", "polynomial"}, default: "nearest").
+
+    Returns:
+    -------
+    xarray.DataArray or None
+        Stacked UAV data as an xarray DataArray or None if no data is provided.
+        
+    Notes:
+    -------
     The point cloud data is extracted from a file type xyz which is pderived product from the RGB camera. This file was obtained from 
     the sfm pix4D analysis. You don;t necesarly must have all three sources of data, you can leave the other sources as None if you don't have them.
-    ...
-    Parameters
-    ----------
-    roi: polygon
-        region of interest
-    ms_data: drone_data class, optional
-        multispectral information
-    rgb_data: drone_data class, optional
-        rgb information this is provided by a RGB high definition camera
-    pointclouddata: xarray class, optional
-        2d point cloud image
-    resample_method: str, optional
-        insterpolation method that will be used to resample the image
-         ({"linear", "nearest", "zero", "slinear", "quadratic", "cubic", "polynomial"}, default: "nearest")
-
     """
+    
     imagelist = []
 
     if pointclouddata is not None:
@@ -233,6 +257,7 @@ def stack_multisource_data(roi,ms_data = None,
                      'blue':'blue_3d',
                      'green':'green_3d'})
 
+    # Processing RGB and MS data
     if rgb_data is not None and ms_data is not None:
         # shift displacement correction using rgb data
         shiftconv= find_shift_between2xarray(ms_data, rgb_data)
@@ -249,41 +274,36 @@ def stack_multisource_data(roi,ms_data = None,
         msclipped = clip_xarraydata(msregistered, roi.loc[:,'geometry'], buffer = bufferdef)
         mmrgbclipped = clip_xarraydata(rgb_data, roi.loc[:,'geometry'], buffer = bufferdef)
 
+        # Rename MS channels to avoid naming conflicts
         msclipped = msclipped.rename({'red':'red_ms',
                      'blue':'blue_ms',
                      'green':'green_ms'})
         imagelist.append(mmrgbclipped)
         imagelist.append(msclipped)
 
+        # Resample point cloud data if available
         if pointclouddata is not None:
             pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = resamplemethod)
             imagelist.append(pointclouddatares)
 
-    elif ms_data is not None:
-        msclipped = clip_xarraydata(ms_data, roi.loc[:,'geometry'], buffer = bufferdef)
-        imagelist.append(msclipped)
+    # Handling cases with only MS or RGB data
+    elif ms_data is not None or rgb_data is not None:
+        source = ms_data if ms_data is not None else rgb_data
+        souce_c = clip_xarraydata(source, roi.loc[:,'geometry'], buffer = bufferdef)
+        imagelist.append(souce_c)
         if pointclouddata is not None:
-            pointclouddatares = resample_xarray(pointclouddata,msclipped, method = resamplemethod)
+            pointclouddatares = resample_xarray(pointclouddata,souce_c, method = resamplemethod)
             imagelist.append(pointclouddatares)
 
-    elif rgb_data is not None:
-        mmrgbclipped = clip_xarraydata(rgb_data, roi.loc[:,'geometry'], buffer = bufferdef)
-        imagelist.append(mmrgbclipped)
-        if pointclouddata is not None:
-            pointclouddatares = resample_xarray(pointclouddata,mmrgbclipped, method = resamplemethod)
-            imagelist.append(pointclouddatares)
-
-    else:
-        if pointclouddata is not None:
+    elif pointclouddata is not None:
             imagelist.append(pointclouddata)
 
     if len(imagelist)>0:
-        if len(imagelist) == 1:
-            output = imagelist[0]
-        else:
-            output = xarray.merge(imagelist)
+        output = imagelist[0] if len(imagelist) == 1 else xarray.merge(imagelist)
         output.attrs['count'] =len(list(output.keys()))
-
+    else:
+        output = None
+        
     return output
 
 def _set_dronedata(path, **kwargs):
@@ -293,8 +313,7 @@ def _set_dronedata(path, **kwargs):
         raise ValueError('the path: {} does not exist'.format(path))
     return data
 
-RGB_BANDS = ["red","green","blue"] ### this order is because the rgb uav data is stacked
-MS_BANDS = ['blue', 'green', 'red', 'edge', 'nir']
+
 
 class IndividualUAVData(object):
     """
@@ -302,9 +321,69 @@ class IndividualUAVData(object):
     using a spatial vector file
     """
     
+    def __init__(self, 
+                 rgb_input: Optional[List[str]] = None,
+                 ms_input: Optional[List[str]] = None,
+                 threed_input: Optional[List[str]] = None,
+                 spatial_boundaries = None,
+                 rgb_bands = None,
+                 ms_bands = None,
+                 buffer = 0.6,
+        ):
+        
+        """
+        Initializes the IndividualUAVData class for processing UAV data.
 
+        Parameters:
+        ----------
+        rgb_input : List(str), optional
+            Path containing the RGB orthomosaic imagery.
+        ms_input : List(str), optional
+            Path containing the MS orthomosaic imagery.
+        threed_input : List(str), optional
+            Path containing the point cloud data (XYZ format).
+        spatial_boundaries : GeoDataFrame or similar, optional
+            Spatial polygon defining the area of interest.
+        rgb_bands : list, optional
+            Names of RGB channels.
+        ms_bands : list, optional
+            Names of multispectral channels.
+        buffer : float, optional
+            Buffer value for image processing during stacking.
+
+        Notes:
+        -----
+        The class supports handling and stacking of RGB, multispectral, and point cloud data.
+        It provides functionalities for data clipping based on spatial boundaries and exporting
+        the processed data.
+        """
+        self.rgb_bands = rgb_bands
+        self.ms_bands = ms_bands
+
+        self.uav_sources = {'rgb': None,
+                            'ms': None,
+                            'pointcloud': None,
+                            'stacked': None}
+                            
+        self._fnsuffix = ''
+        self.rgb_path = rgb_input
+        self.ms_input = ms_input
+        self.threed_input = threed_input
+        self.spatial_boundaries = spatial_boundaries.copy()
+        ### read data with buffer
+        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
+    
     @property
     def rgb_data(self):
+        """
+        Retrieves RGB processed data.
+
+        Returns:
+        -------
+        xarray.DataArray or None:
+            Clipped RGB data as an xarray DataArray. Returns None if RGB data is not available.
+        """
+    
         if self.uav_sources['rgb']:
             data = clip_xarraydata(self.uav_sources['rgb'].drone_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
@@ -314,6 +393,15 @@ class IndividualUAVData(object):
 
     @property
     def ms_data(self):
+        """
+        Retrieves clipped multispectral (MS) data using the defined spatial boundaries.
+
+        Returns:
+        -------
+        xarray.DataArray or None:
+            Clipped MS data as an xarray DataArray. Returns None if MS data is not available.
+        """
+    
         if self.uav_sources['ms']:
             data = clip_xarraydata(self.uav_sources['ms'].drone_data, 
                 self.spatial_boundaries.loc[:,'geometry'])
@@ -323,6 +411,24 @@ class IndividualUAVData(object):
 
 
     def export_as_pickle(self, path = None, uav_image = 'stacked', preffix = None):
+        
+        """
+        Exports specified UAV data as a pickle file.
+
+        Parameters:
+        ----------
+        path : str
+            Path to the export directory.
+        uav_image : str
+            Key for the UAV data to be exported (e.g., 'stacked').
+        preffix : str, optional
+            Prefix for the output filename.
+
+        Returns:
+        -------
+        None
+        """
+    
         if not os.path.exists(path):
             os.mkdir(path)
         
@@ -331,7 +437,24 @@ class IndividualUAVData(object):
         with open(os.path.join(path, fn), "wb") as f:
                 pickle.dump(self.uav_sources[uav_image], f)
 
-    def stack_uav_data(self, bufferdef = None, rgb_asreference = True, resample_method = 'nearest'):
+    def stack_uav_data(self, bufferdef: Optional[float] = None, rgb_asreference: bool = True, resample_method: str = 'nearest'):
+        """
+        Stacks available UAV data sources (RGB, MS, point cloud) into a single dataset.
+
+        Parameters:
+        ----------
+        bufferdef : float, optional
+            Buffer value for image processing.
+        rgb_asreference : bool, optional
+            Whether to use RGB data as a reference for stacking.
+        resample_method : str, optional
+            Resampling method to use (e.g., 'nearest').
+
+        Returns:
+        -------
+        xarray.DataArray:
+            Stacked UAV data as an xarray DataArray.
+        """
 
         pointcloud = self.uav_sources['pointcloud'].twod_image if self.uav_sources['pointcloud'] is not None else None
         ms = self.uav_sources['ms'].drone_data if self.uav_sources['ms'] is not None else None
@@ -351,7 +474,13 @@ class IndividualUAVData(object):
     
     def rgb_uavdata(self, **kwargs):
         """
-        read rgb data
+        Processes and stores RGB UAV data.
+
+        Additional keyword arguments are passed to the data processing function.
+
+        Returns:
+        -------
+        None
         """
         
         if self.rgb_bands is None:
@@ -367,7 +496,13 @@ class IndividualUAVData(object):
 
     def ms_uavdata(self, **kwargs):    
         """
-        read multi spectral data
+        Processes and stores multispectral (MS) UAV data.
+
+        Additional keyword arguments are passed to the data processing function.
+
+        Returns:
+        -------
+        None
         """
         if self.ms_bands is None:
             self.ms_bands = MS_BANDS
@@ -381,7 +516,23 @@ class IndividualUAVData(object):
         self._fnsuffix = self._fnsuffix+ 'ms'
 
     def pointcloud(self, interpolate = True, **kwargs):
-        
+        """
+        Processes and stores point cloud data.
+
+        Parameters:
+        ----------
+        interpolate : bool, optional
+            Whether to interpolate point cloud data.
+
+        Raises:
+        ------
+        Warning:
+            If point cloud data is not found or coordinates are incorrect.
+
+        Returns:
+        -------
+        None
+        """
         try:
             if os.path.exists(self.threed_input):
                 buffertmp = self._boundaries_buffer.copy().reset_index()
@@ -401,49 +552,11 @@ class IndividualUAVData(object):
         #points_perplant.to_xarray(sp_res=0.012, interpolate=False)
         self.uav_sources.update({'pointcloud':pcloud_data})
 
-    def __init__(self, 
-                 rgb_input = None,
-                 ms_input = None,
-                 threed_input = None,
-                 spatial_boundaries = None,
-                 rgb_bands = None,
-                 ms_bands = None,
-                 buffer = 0.6,
-        ):
-        
-        """function to extract orthomosaic imagery from RGB, MS, and point cloud using 
-        a vector file
 
-        Args:
-            rgb_input (str, optional): Path that contains the RGB orthomosaic. Defaults to None.
-            ms_input (str, optional): Path that contains the MS orthomosaic imagery. Defaults to None.
-            threed_input (str, optional): Path that contains the point cloud with extension xyz. Defaults to None.
-            spatial_boundaries (Polygon, optional): vector as spatial polygon. Defaults to None.
-            rgb_bands (list, optional): rgb channel names. Defaults to None.
-            ms_bands (list, optional): multi-spectral channel names. Defaults to None.
-            buffer (float, optional): processing buffer for image stacking. Defaults to 0.6.
-        """
-        self.rgb_bands = rgb_bands
-        self.ms_bands = ms_bands
-
-        self.uav_sources = {'rgb': None,
-                            'ms': None,
-                            'pointcloud': None,
-                            'stacked': None}
-                            
-        self._fnsuffix = ''
-        self.rgb_path = rgb_input
-        self.ms_input = ms_input
-        self.threed_input = threed_input
-        self.spatial_boundaries = spatial_boundaries.copy()
-        ### read data with buffer
-        self._boundaries_buffer = spatial_boundaries.copy().buffer(buffer, join_style=2)
 
 
 ##
-import tqdm
-import random
-import itertools
+
 
 def extract_random_samples_from_drone(imagepath, geometries, bands = None, multiband = True, buffer = 0, samples = 500):
     """extract sample polygons data from UAV
@@ -543,18 +656,101 @@ def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geo
 
 class MultiMLTImages(CustomXarray):
     """
-    A class for extracting, processing and stacking multi-temporal remote sensing data.
+    A class for extracting, processing, and stacking multi-temporal remote sensing data.
 
-
+    Attributes:
+    ----------
+    rgb_paths : list
+        Paths to RGB orthomosaic imagery.
+    ms_paths : list
+        Paths to multispectral orthomosaic imagery.
+    pointcloud_paths : list
+        Paths to point cloud data.
+    processing_buffer : float
+        A buffer value for image processing.
+    rgb_channels : list
+        Names of RGB channels.
+    ms_channels : list
+        Names of multispectral channels.
+    path : str
+        Directory path for customdict xarray files.
+    geometries : GeoDataFrame
+        Geopandas DataFrame of spatial geometries.
     """
+    
+    def __init__(self, 
+                rgb_paths: Optional[List[str]]=None, 
+                ms_paths=None, 
+                pointcloud_paths=None, 
+                spatial_file=None, 
+                rgb_channels=None, 
+                ms_channels=None, 
+                path = None,
+                processing_buffer=0.6,
+                **kwargs):
+        
+        """
+        Initializes the MultiMLTImages class for processing multi-temporal remote sensing data.
+
+        This class is designed to handle and process multi-temporal remote sensing data 
+        from various sources such as RGB, multispectral (MS), and point cloud data. It 
+        supports operations like data extraction, scaling, and calculation of vegetation indices.
+
+        Parameters:
+        ----------
+        rgb_paths : list, optional
+            List of paths to RGB orthomosaic imagery directories.
+        ms_paths : list, optional
+            List of paths to multispectral orthomosaic imagery directories.
+        pointcloud_paths : list, optional
+            List of paths to point cloud data directories (XYZ format).
+        spatial_file : str, optional
+            Path to a vector file (e.g., GeoJSON, Shapefile) defining spatial geometries for extraction.
+        rgb_channels : list, optional
+            Names of the channels in the RGB data (e.g., ['R', 'G', 'B']).
+        ms_channels : list, optional
+            Names of the channels in the multispectral data.
+        path : str, optional
+            Path to a directory where customdict xarray files are stored as pickle files.
+        processing_buffer : float, optional
+            Buffer value (in meters) used during image processing to handle edge effects.
+        **kwargs : dict
+            Additional keyword arguments to be passed to the parent class (CustomXarray).
+
+        Raises:
+        ------
+        FileNotFoundError
+            If the provided `spatial_file` does not exist.
+
+        Examples:
+        --------
+        #### Initializing with RGB and MS data paths
+        multi_mlt_images = MultiMLTImages(rgb_paths=["/path/to/rgb"], 
+                                        ms_paths=["/path/to/ms"],
+                                        spatial_file="/path/to/spatial/file.sh")
+        """
+        
+        self.rgb_paths = rgb_paths
+        self.ms_paths = ms_paths
+        self.pointcloud_paths = pointcloud_paths
+        self.processing_buffer = processing_buffer
+        self.rgb_channels = rgb_channels
+        self.ms_channels = ms_channels
+        self.path = path
+        super().__init__(**kwargs)
+        if spatial_file is not None and not os.path.exists(spatial_file):
+            raise FileNotFoundError(f"Spatial file not found: {spatial_file}")
+
+        self.geometries = gpd.read_file(spatial_file) if spatial_file is not None else None
+            
     
     @property
     def listcxfiles(self):
         """
-        Property: Retrieves a list of filenames ending with 'pickle' in the specified path.
+        Retrieves a list of filenames ending with 'pickle' in the specified path.
 
         Returns:
-            list: List of filenames.
+            List[str]: List of filenames.
         """
         
         if self.path is not None:
@@ -568,25 +764,38 @@ class MultiMLTImages(CustomXarray):
         """
         Exports data for an individual geometry to a pickle file.
 
-        Args:
-            geometry_id (int): Index of the geometry.
-            path (str): Path to export directory.
-            fn (str): Filename for export.
+        Parameters:
+        ----------
+        geometry_id : int
+            Index of the geometry.
+        path : str
+            Path to export directory.
+        fn : str
+            Filename for export.
+        
+        Returns:
+        -------
+        None
         """
         
         self.individual_data(geometry_id, **kwargs)
         self.export_as_dict(path = path,fn=fn)
         
-    def extract_samples(self, channels = None, n_samples = 100, **kwargs):
+    def extract_samples(self, channels: List[str] = None, n_samples: int = 100, **kwargs):
         """
-        Extracts sample data from a geopandas polygons.
+        Extracts sample data from geopandas polygons.
 
-        Args:
-            channels (list, optional): List of channels to extract. Defaults to None.
-            n_samples (int): Number of samples to extract. Defaults to 100.
+        Parameters:
+        ----------
+        channels : List[str], optional
+            List of channels to extract.
+        n_samples : int
+            Number of samples to extract.
 
         Returns:
-            dict: Extracted data organized by channel.
+        -------
+        Dict[str, List[float]]:
+            Extracted data organized by channel.
         """
         
         import random
@@ -620,33 +829,56 @@ class MultiMLTImages(CustomXarray):
     
 
     
-    def export_multiple_data(self, path, fnincolumn = None,njobs = 1, **kwargs):
+    def export_multiple_data(self, path, fnincolumn = None,njobs = 1,verbose=False, **kwargs):
         """
-        Exports data for multiple geometries.
+        Exports data for multiple geometries to specified path.
 
-        Args:
-            path (str): Path to export directory.
-            fnincolumn (str, optional): Name of the column in the geometry containing filenames. Defaults to None.
-            njobs (int, optional): Number of parallel jobs. Defaults to 1.
+        Parameters:
+        ----------
+        path : str
+            Path to export directory.
+        fnincolumn : str, optional
+            Column name in geometry DataFrame containing filenames.
+        njobs : int, optional
+            Number of parallel jobs for export.
+        verbose : bool, optional
+            Whether to display a progress bar.
+
+        Returns:
+        -------
+        None
+        
+        Raises:
+        ------
+        Exception: If any of the parallel tasks fail.
+        
         """
         
         # defining export file names
+        geometries_range = range(self.geometries.shape[0])
         
         if fnincolumn is not None:
             fns = ['{}_{}'.format(fnincolumn, i) for i in self.geometries[fnincolumn].values]
         else:
-            fns = ['file_{}'.format(i) for i in list(range(self.geometries.shape[0]))]
+            fns = ['file_{}'.format(i) for i in list(geometries_range)]
             
         if njobs == 1:
-            for j in tqdm.tqdm(range(self.geometries.shape[0])):
+            geometries_loop= tqdm.tqdm(geometries_range) if verbose else geometries_range
+            for j in geometries_loop:
                 self._export_individual_data(self, j,path,fns[j],**kwargs)
                 
         else:
             with cf.ProcessPoolExecutor(max_workers=njobs) as executor:
-                for j in range(self.geometries.shape[0]):
-                    executor.submit(self._export_individual_data, 
-                                                    j, path, fns[j], **kwargs)
+            
+                futures = {executor.submit(self._export_individual_data, 
+                                           j, path, fns[j], **kwargs) for j in geometries_range}
                 
+                for future in cf.as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as exc:
+                        print(f"A task generated an exception: {exc}")
+                        raise
         
     def _time_pointsextraction(self,tp):
         
@@ -717,19 +949,34 @@ class MultiMLTImages(CustomXarray):
     
         return self.xrdata
     
-    def read_individual_data(self, file = None, dataformat = 'CHW'):
+    def read_individual_data(self, file: str = None, path: str = None, dataformat: str = 'CHW'):
         """
-        Reads data from a pickle file.
+        Reads individual data from a pickle file.
 
-        Args:
-            file (str, optional): Filename. Defaults to None.
-            dataformat (str, optional): Data format. Defaults to 'CHW'.
+        Parameters:
+        ----------
+        file : str, optional
+            Filename to read.
+        path : str, optional
+            Directory path containing the file.
+        dataformat : str, optional
+            Format of the data in the file.
+
+        Returns:
+        -------
+        xarray.DataArray
+            Data read from the file as xarray.
         """
         
+        if path is not None:
+            file = os.path.basename(file)
+
+        else:
+            path = self.path
+            file = [i for i in self.listcxfiles if i == file][0]            
         self._scalarflag = False
-        file = [i for i in self.listcxfiles if i == file][0]
-        customdict = self._read_data(path=self.path, 
-                                   fn = os.path.basename(file),
+        customdict = self._read_data(path=path, 
+                                   fn = file,
                                    suffix='pickle')
         self.xrdata  = from_dict_toxarray(customdict, dimsformat = dataformat)
         #return self.to_array(self.customdict,onlythesechannels)
@@ -738,12 +985,21 @@ class MultiMLTImages(CustomXarray):
     def scale_uavdata(self, scaler, scaler_type = 'standarization', applyagain =False):
         from .xr_functions import xr_data_transformation
         """
-        Scales the data using a scaler.
+        Scales multitemporal data using the specified scaler.
 
-        Args:
-            scaler (dict): Dictionary of scalers for each channel.
-            scaler_type (str, optional): Scaler type either 'standarization' or 'normalization'. Defaults to 'standarization'.
-            applyagain (bool, optional): Apply the scaling again. Defaults to False.
+        Parameters:
+        ----------
+        scaler : Dict[str, Scaler]
+            Scaler for each channel.
+        scaler_type : str, optional
+            Type of scaler ('standarization' or 'normalization').
+        applyagain : bool, optional
+            Whether to apply scaling again if already applied.
+
+        Returns:
+        -------
+        xarray.DataArray
+            Scaled UAV data.
         """
         
         assert type(scaler) == dict
@@ -759,14 +1015,20 @@ class MultiMLTImages(CustomXarray):
         return self.xrdata 
             
                     
-    def calculate_vi(self, vilist, viequations = None, overwritevi = True, verbose = False):
+    def calculate_vi(self, vilist, viequations: List[str] = None, overwritevi: bool = True, verbose: bool = False):
         """
-        Calculates vegetation indices.
+        Calculates specified vegetation indices on the data.
 
-        Args:
-            vilist (list, optional): List of vegetation indices to calculate. Defaults to None.
-            viequations (dict, optional): Equations for vegetation indices. Defaults to None.
-            overwritevi (bool, optional): Overwrite existing index in the datacube. Defaults to True.
+        Parameters:
+        ----------
+        vilist : List[str]
+            List of vegetation indices to calculate.
+        viequations : Dict[str, str], optional
+            Custom equations
+            
+        overwritevi: bool, optional 
+            Overwrite existing index in the datacube. Defaults to True.
+            
         """
         
         if vilist is None:
@@ -805,40 +1067,6 @@ class MultiMLTImages(CustomXarray):
         
         return dataasdict
     
-    def __init__(self, 
-                 rgb_paths=None, 
-                 ms_paths=None, 
-                 pointcloud_paths=None, 
-                 spatial_file=None, 
-                 rgb_channels=None, 
-                 ms_channels=None, 
-                 path = None,
-                 processing_buffer=0.6,
-                 **kwargs):
-        """function to extract orthomosaic imagery from RGB, MS, and point cloud using 
-        a vector file
 
-        Args:
-            rgb_paths (list, optional): List of folder paths containing RGB orthomosaic imagery. Defaults to None.
-            ms_paths (list, optional): List of folder paths containing multispectral orthomosaic imagery. Defaults to None.
-            pointcloud_paths (list, optional): List of folder paths containing point cloud data (xyz format). Defaults to None.
-            spatial_file (str, optional): Path to a vector file defining spatial geometries. Defaults to None.
-            rgb_channels (list, optional): RGB channel names. Defaults to None.
-            ms_channels (list, optional): Multispectral channel names. Defaults to None.
-            path (str, optional): Path to a directory containing customdict xarray files as pickles. Defaults to None.
-            processing_buffer (float, optional): A buffer value for image processing. Defaults to 0.6.
-        """
-        
-        self.rgb_paths = rgb_paths
-        self.ms_paths = ms_paths
-        self.pointcloud_paths = pointcloud_paths
-        self.processing_buffer = processing_buffer
-        self.rgb_channels = rgb_channels
-        self.ms_channels = ms_channels
-        self.path = path
-        super().__init__(**kwargs)
-        if spatial_file is not None:
-            assert os.path.exists(spatial_file)
-            self.geometries = gpd.read_file(spatial_file)
         
             

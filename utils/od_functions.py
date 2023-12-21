@@ -205,9 +205,6 @@ def clip_coords(boxes, shape):
 
 
 
-
-
-
 def clip_boxes(boxes, shape):
     # Clip boxes (xyxy) to image shape (height, width)
     if isinstance(boxes, torch.Tensor):  # faster individually
@@ -220,9 +217,6 @@ def clip_boxes(boxes, shape):
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
 
 
-
-<<<<<<< HEAD
-=======
 def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] normalized where xy1=top-left, xy2=bottom-right
     if clip:
@@ -244,27 +238,6 @@ def xyxy2xywh(x):
     return y
 
 
-def from_yolo_toxy(yolo_style, size):
-    dh, dw = size
-    _, x, y, w, h = yolo_style
-
-    l = int((x - w / 2) * dw)
-    r = int((x + w / 2) * dw)
-    t = int((y - h / 2) * dh)
-    b = int((y + h / 2) * dh)
-
-    if l < 0:
-        l = 0
-    if r > dw - 1:
-        r = dw - 1
-    if t < 0:
-        t = 0
-    if b > dh - 1:
-        b = dh - 1
-
-    return (l, r, t, b)
-
->>>>>>> 0ad447aecb5d1a494f0ebd486ff9607baf39e781
 def odboxes_per_xarray(xarraydata, yolo_model, device, half,
                        conf_thres=0.70, img_size=512, min_size=128,
                        bands=['red', 'green', 'blue']):
