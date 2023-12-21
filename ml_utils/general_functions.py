@@ -10,6 +10,8 @@ import itertools
 
 import copy
 
+from typing import List, Optional, Union
+
 def select_columns(df, colstoselect, additionalfilt = 'gr_'):
     colsbol = [i.startswith(colstoselect[0]
     ) and additionalfilt not in i for i in df.columns]
@@ -103,21 +105,31 @@ class SplitIds(object):
 
         return idsperfold
     
-    def __init__(self, ids_length = None, ids = None,val_perc =None, test_perc = None,seed = 123, shuffle = True, testids_fixed = None) -> None:
+    def __init__(self, ids_length: Optional[int] = None, ids = None,val_perc =None, test_perc = None,seed = 123, shuffle = True, testids_fixed = None) -> None:
         """
-        Split a number of observations into training, validation, and testing groups.
+        Initializes the SplitIds class for splitting data into different sets.
 
-        Args:
-            ids_length (int, optional): Data's length. Defaults to None.
-            ids (list, optional): If there are labels for each position. Defaults to None.
-            val_perc (float, optional): Decimal number that represents the validation percentage dataset. Defaults to None.
-            test_perc (float, optional): Decimal number that represents the testing percentage dataset. Defaults to None.
-            seed (int, optional): Random seed. Defaults to 123.
-            shuffle (bool, optional): If the IDs are going to be shuffled. Defaults to True.
-            testids_fixed (list, optional): If there is already a testing partition, you can provide the IDs of that test dataset. Defaults to None.
+        Parameters:
+        ----------
+        ids_length : int, optional
+            The total number of observations. Required if 'ids' is not provided.
+        ids : list, optional
+            A list of unique identifiers. Required if 'ids_length' is not provided.
+        val_perc : float, optional
+            The proportion of data to be used for the validation set (0.0 to 1.0).
+        test_perc : float, optional
+            The proportion of data to be used for the test set (0.0 to 1.0).
+        seed : int, optional
+            Seed for random number generation to ensure reproducibility.
+        shuffle : bool, optional
+            Whether to shuffle the IDs before splitting.
+        testids_fixed : list, optional
+            A predefined list of IDs to be used as the test set.
 
         Raises:
-            ValueError: If either ids_length or ids are not provided.
+        ------
+        ValueError
+            If neither 'ids_length' nor 'ids' are provided or if the percentages are out of range.
         """
         
         
