@@ -73,6 +73,31 @@ class ClassificationReporter(object):
     _reporter_keys : list of str
         List of reporter keys.
     """
+    def __init__(self, _reporter_keys = None) -> None:
+        """
+        Initializes the ClassificationReporter with specified reporter keys.
+
+        Parameters
+        ----------
+        _reporter_keys : list of str, optional
+            Custom keys to be used in the reporter dictionary. If None, defaults to ['features', 'cvscores'].
+
+        Raises
+        ------
+        TypeError
+            If _reporter_keys is not a list and not None.
+        """
+        if _reporter_keys is not None and not isinstance(_reporter_keys, list):
+            raise TypeError("Reporter keys must be a list or None.")
+        
+        self._reporter_keys = ['features','cvscores'] if _reporter_keys is None else _reporter_keys
+        
+        self.reset_reporter()
+    
+    @staticmethod
+    def _del_values_by_index(listvalues, indices):
+        listvalues = [val for i, val in enumerate(listvalues) if i not in indices]
+        return listvalues
     
     def reset_reporter(self):
         reporter = {}
@@ -82,23 +107,53 @@ class ClassificationReporter(object):
         self.reporter = reporter
         
     def update_reporter(self, new_entry):    
+        
         """
         Update the reporter with a new entry.
+
+        This method allows the addition of a new set of classification metrics to the reporter.
+        Each key in the new entry is appended to the corresponding list in the reporter dictionary.
 
         Parameters
         ----------
         new_entry : dict
-            Dictionary containing the new entry to add.
+            A dictionary containing the new entry to add. Keys in this dictionary should match 
+            those in the _reporter_keys attribute.
+
+        Raises
+        ------
+        ValueError
+            If the keys in the new_entry do not match the _reporter_keys.
 
         Returns
         -------
         None
         """
         
+        if not all(key in self._reporter_keys for key in new_entry):
+            raise ValueError("Keys in the new entry do not match the reporter keys.")
+        
         for k in list(self._reporter_keys):
             self.reporter[k].append(new_entry[k])        
     
-    def load_reporter(self, fn):    
+    def load_reporter(self, fn):
+        """
+        Load the reporter data from a JSON file.
+
+        This method reads classification report data from a JSON file and loads it into 
+        the reporter dictionary. If the file does not exist or is empty, the reporter is 
+        reset to its default empty state.
+
+        Parameters
+        ----------
+        fn : str
+            The filename or path to the JSON file containing the reporter data.
+
+        Returns
+        -------
+        None
+        """
+         
         reporter = loadjson(fn)
         if reporter is None:
             print('s')
@@ -129,11 +184,38 @@ class ClassificationReporter(object):
             outfile.write(json_object)
     
     def remove_configuration(self, dictattrstoremove):
+        """
+        Removes entries from the reporter based on a specific configuration.
 
+        Parameters
+        ----------
+        dictattrstoremove : dict
+            A dictionary specifying the configuration to remove. Each key-value pair in this 
+            dictionary represents an attribute and its corresponding value that must be matched 
+            in the entries to be removed.
+
+        Returns
+        -------
+        None
+        """
         posfirstattr = self._finding_configuration_indices(dictattrstoremove)
         self._remove_conf_using_indices(posfirstattr)
 
     def _finding_configuration_indices(self, conftolookfor):
+        """
+        Finds indices in the reporter that match a given configuration.
+
+        Parameters
+        ----------
+        conftolookfor : dict
+            A dictionary specifying the configuration to look for. 
+
+        Returns
+        -------
+        list
+            A list of indices where the configuration matches.
+        """
+        
         listkeys = list(conftolookfor.keys())
 
         idattr = 0
@@ -147,21 +229,22 @@ class ClassificationReporter(object):
         return posattr
 
     def _remove_conf_using_indices(self,indices):
+        """
+        Removes entries at specified indices from the reporter.
+
+        Parameters
+        ----------
+        indices : list
+            A list of indices indicating which entries to remove.
+
+        Returns
+        -------
+        None
+        """
+        
         for attr in list(self.reporter.keys()):
             self.reporter[attr] = self._del_values_by_index(self.reporter[attr].copy(), indices)
-    
-    @staticmethod
-    def _del_values_by_index(listvalues, indices):
-        listvalues = [val for i, val in enumerate(listvalues) if i not in indices]
-        return listvalues
-
-    def __init__(self, _reporter_keys = None) -> None:
-        
-        if _reporter_keys is None:
-            self._reporter_keys = ['features','cvscores']
-        else:
-            self._reporter_keys = _reporter_keys
-            
+                
 
 class DL_ClassReporter(ClassificationReporter):
     def n_models(self):
