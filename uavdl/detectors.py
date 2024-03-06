@@ -2,10 +2,10 @@ from .utils import *
 import torch
 
 from ..utils.drone_data import DroneData
-from ..utils.gis_functions import from_bbxarray_2polygon, merging_overlaped_polygons
+from ..utils.gis_functions import from_bbxarray_2polygon, merging_overlaped_polygons, merge_spatial_features
 from ..utils.multipolygons_functions import IndividualUAVData
 from ..utils.xr_functions import add_2dlayer_toxarrayr
-from ..utils.segmentation_datasets import SegmentationPrediction
+#from ..utils.segmentation_datasets import SegmentationPrediction
 
 
 from .plt_utils import draw_frame, plot_segmenimages
@@ -15,6 +15,9 @@ import numpy as np
 import tqdm
 import collections
 import torch.optim as optim
+
+from typing import List, Dict
+import xarray as xr
 
 class DroneObjectDetection(DroneData):
     
@@ -167,10 +170,113 @@ class DroneObjectDetection(DroneData):
         self.model = yolo_model
         
 
+
+class Drone_ODetector(DroneData):
+    """
+    A class for detecting objects of interest in UAV images using a given detector model.
+
+    Args:
+        detector: Object detection model used for detecting objects.
+        orthomosaic_path (str): Path to the orthomosaic image.
+        bands (List[str], optional): List of bands to use from the orthomosaic image. Defaults to None.
+        multiband_image (bool, optional): Indicates whether the orthomosaic image is multiband. Defaults to False.
+        bounds (Dict, optional): Dictionary containing the bounding coordinates of the orthomosaic image. Defaults to None.
+        device (str, optional): Device to run the detection model on (e.g., 'cpu', 'cuda'). Defaults to None.
+    """
+    
+    def __init__(self, detector, orthomosaic_path: str, bands: List[str] = None, 
+                 multiband_image: bool = False, bounds: Dict = None,
+                 device:str = None):
+        
+        super().__init__(orthomosaic_path, bands, multiband_image, bounds)
+        self.device = device
+        self.detector = detector
+    
+    def detect_oi_in_uavimage(self, tilesize: int = 512, overlap: List = None, 
+                              aoi_limit: float = 0.15, threshold_prediction: float = 0.1):
+        """
+        Detect objects of interest in UAV images.
+
+        Args:
+            tilesize (int, optional): Size of the tiles for image splitting. Defaults to 512.
+            overlap (List, optional): List of overlap values for tile splitting. Defaults to None.
+            aoi_limit (float, optional): Minimum area of interest limit. Defaults to 0.15.
+            threshold_prediction (float, optional): Minimum pprediction accuracy for the prediction. Defaults to 0.1.
+
+        Returns:
+            tuple: Detected boundary boxes and polygons.
+        """
+        
+        self._tilesize = tilesize
+        overlap = [0] if overlap is None else overlap
+        allpols_pred = []
+        for spl in overlap:
+            self.split_into_tiles(width = tilesize, height = tilesize, overlap = spl)
+            ## only tiles with data
+            onlythesetiles = []
+            for i in tqdm.tqdm(range(len(self._tiles_pols))):
+                if np.sum(self.tiles_data(i)[self._bands[0]].values) != 0.0:
+                    bbasgeodata = self.detect(self.tiles_data(i), threshold = threshold_prediction)
+                
+                    if bbasgeodata is not None:
+                        bbasgeodata['tile']= [i for j in range(bbasgeodata.shape[0])]
+                        allpols_pred.append(bbasgeodata)
+                    
+        if len(allpols_pred) > 0:
+            allpols_pred_gpd = pd.concat(allpols_pred)
+            allpols_pred_gpd['id'] = [i for i in range(allpols_pred_gpd.shape[0])]
+            print("{} polygons were detected".format(allpols_pred_gpd.shape[0]))
+
+            total_objects = merge_spatial_features(allpols_pred_gpd, mininterectedgeom = aoi_limit)
+            
+            total_objects = pd.concat(total_objects) 
+            print("{} bounding boxes were detected".format(total_objects.shape[0]))
+        
+            return total_objects, allpols_pred
+    
+    def detect(self, xrimage, threshold = 0.1):
+        """
+        Detect objects in an image.
+
+        Args:
+            xrimage (xr.Dataset or xr.DataArray): Image data in xarray format.
+            threshold (float, optional): Detection threshold. Defaults to 0.1.
+
+        Returns:
+            pd.DataFrame: Detected objects with their attributes.
+        """
+        
+        if isinstance(xrimage, xr.Dataset):
+            tiledata = xrimage.to_array().values.astype(np.uint8)
+        else:
+            tiledata = xrimage.values.astype(np.uint8)
+        # TODO: IMAGE ORDER CHANGE FOR OTHER DETECTORS
+        tiledata = tiledata.swapaxes(0,1).swapaxes(1,2)[:,:,[2,1,0]]
+        origsize = tiledata.shape[:2]
+        detections = self.detector(image=tiledata, threshold = threshold)
+        
+        xyxylist = [[int(j * origsize[0]) for j in i] for i in detections[0]]
+        
+        crs_system = None if xrimage.attrs['crs'] is None else xrimage.attrs['crs']
+        polsshp_list = []
+        if len(xyxylist):
+            for i in range(len(xyxylist)):
+                bb_polygon = from_bbxarray_2polygon(xyxylist[i], xrimage)
+
+                pred_score = np.round(detections[1][i] * 100, 3)
+
+                gdr = gpd.GeoDataFrame({'pred': [i],
+                                        'score': [pred_score],
+                                        'geometry': bb_polygon},
+                                    crs=crs_system)
+
+                polsshp_list.append(gdr)
+            return pd.concat(polsshp_list, ignore_index=True)
+        
+
 #### segmentation
 
-
-        
+"""    
 class UAVSegmentation(SegmentationPrediction):
     
     def plot_segmentation(self, mask, threshold = 180, channels = ['blue','green', 'red'],scale = False,scaler = None, **kwargs):
@@ -267,3 +373,4 @@ class UAVSegmentation(SegmentationPrediction):
         self.buffer = buffer
         
         super().__init__(architecture=architecture)
+"""
