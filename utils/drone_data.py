@@ -556,8 +556,8 @@ class DroneData:
 
         return multi_xarray
 
-    def plot_multiplebands(self, bands, height=20, width=14, xinverse = False):
-        return plot_multibands_fromxarray(self.drone_data, bands, height, width, xinverse = xinverse)
+    def plot_multiplebands(self, bands, figsize = (10,10), xinverse = False):
+        return plot_multibands_fromxarray(self.drone_data, bands,figsize=figsize, xinverse = xinverse)
 
     def plot_singleband(self, band, height=12, width=8):
 

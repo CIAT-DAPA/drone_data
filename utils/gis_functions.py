@@ -1,4 +1,5 @@
 from numpy.lib.polynomial import poly
+import tqdm
 
 import pandas as pd
 import xarray
@@ -27,7 +28,8 @@ from .image_functions import phase_convolution,register_image_shift
 
 from .image_functions import getcenter_from_hull,border_distance_fromgrayimg
 from .image_functions import hist_3dimg
-    
+
+from typing import List, Optional
 
 # check it
 
@@ -551,6 +553,57 @@ def from_bbxarray_2polygon(bb, xarrayimg):
     return from_xyxy_2polygon(xcoords[int(x1)], ycoords[int(y1)],
                               xcoords[int(x2)], ycoords[int(y2)])
 
+def AoU_from_polygons(p1: Polygon, p2: Polygon):
+    """
+    Calculate the Intersection over Minimum Area (AoU) between two polygons.
+
+    Args:
+        p1 (Polygon): First polygon.
+        p2 (Polygon): Second polygon.
+
+    Returns:
+        float: Intersection over Minimum Area (AoU) between the two polygons.
+    """
+    intersecarea = p1.intersection(p2).area
+    if intersecarea == 0:
+        return 0
+    
+    area1 = p1.area
+    area2 = p2.area
+    minarea = np.min([area1,area2])
+    if minarea > 0:
+        aoi = intersecarea/ (area1+ area2 - intersecarea)
+    else:
+        aoi = 0
+    if intersecarea == minarea:
+        aoi = 1
+        
+    return aoi
+
+
+def finding_intersected_pols(polygons: List, polref: Polygon, thresholdintersection: float = 0.25):
+    """
+    Find polygons intersecting with a reference polygon based on the Intersection over Minimum Area (AoU) threshold.
+
+    Args:
+        polygons (list): List of polygons to compare with the reference polygon.
+        polref (Polygon): Reference polygon.
+        thresholdintersection (float, optional): Intersection over Minimum Area (AoU) threshold. Defaults to 0.25.
+
+    Returns:
+        list: List of intersecting polygons with their respective AoU values above the threshold.
+    """
+    
+    pp1 = polref
+    intersectedpols = []
+    for i in range(len(polygons)):
+        pp2 = polygons[i]
+        aou = AoU_from_polygons(pp1, pp2)
+        if aou>thresholdintersection:
+            intersectedpols.append([i,aou])
+
+    return intersectedpols
+
 
 def AoI_from_polygons(p1, p2):
     """
@@ -589,19 +642,23 @@ def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
 
 
 def get_minmax_pol_coords(p):
-    coordsx, coordsy = p.exterior.xy
-    x1minr = np.min(coordsx)
-    x2minr = np.max(coordsx)
-    y1minr = np.min(coordsy)
-    y2minr = np.max(coordsy)
-    return [[x1minr, x2minr], [y1minr, y2minr]]
+    coords = p.exterior.xy
+    x1minr, y1minr = np.min(coords, axis = 1)
+    x2maxr, y2maxr = np.max(coords, axis = 1)
+    #x1minr = np.min(coordsx)
+    #x2minr = np.max(coordsx)
+    #y1minr = np.min(coordsy)
+    #y2maxr = np.max(coordsy)
+    return [[x1minr, x2maxr], [y1minr, y2maxr]]
 
 
-def best_polygon(overlaylist):
+def best_polygon(overlaylist, geometries = True):
     xlist = []
     ylist = []
     for i in range(len(overlaylist)):
-        x, y = get_minmax_pol_coords(overlaylist[i].geometry.values[0])
+        
+        geomcoords = overlaylist[i].geometry.values[0] if geometries else overlaylist[i]
+        x, y = get_minmax_pol_coords(geomcoords)
         xlist.append(x)
         ylist.append(y)
 
@@ -611,6 +668,7 @@ def best_polygon(overlaylist):
     y2 = np.max(ylist)
 
     return from_xyxy_2polygon(x1, y1, x2, y2)
+
 
 
 def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0, 
@@ -696,6 +754,106 @@ def get_filteredimage(xrdata, channel = 'z',red_perc = 70, refimg = 0,
     return xrfiltered
 
 ### merge overlap polygons
+
+
+def finding_allintersection_for_polygon(gpdfeatures: gpd.GeoDataFrame,
+                                        idpol: int, testidcolumn: Optional[str] = None, thresholdintersection:float = 0.25, 
+                                        upto: int = 3, verbose: bool = False):
+    """
+    Find all intersecting polygons for a given polygon.
+
+    Args:
+        gpdfeatures (geopandas.GeoDataFrame): GeoDataFrame containing polygon features.
+        idpol (int): Index of the polygon for which intersections need to be found.
+        testidcolumn (str, optional): Name of the column containing polygon IDs. Defaults to None.
+        thresholdintersection (float, optional): Threshold for intersection detection. Defaults to 0.25.
+        upto (int, optional): Maximum number of iterations. Defaults to 3.
+        verbose (bool, optional): Verbosity mode. Defaults to False.
+
+    Returns:
+        geopandas.GeoDataFrame: Merged GeoDataFrame containing intersecting polygons.
+        list: List of IDs of intersecting polygons.
+    """
+    
+    allpolspdc = gpdfeatures.copy()
+    if testidcolumn is None:
+        testidcolumn = 'idpol'
+        allpolspdc[testidcolumn] = list(range(allpolspdc.shape[0]))
+
+    gpdmerged = None
+    count = 0
+    polygon_ids = []
+
+    while True:
+        pols = [i for i in allpolspdc.geometry]
+        if gpdmerged is not None:
+            intersectedpolids = finding_intersected_pols(pols, gpdmerged, 
+                                                         thresholdintersection = thresholdintersection)
+        else:
+            intersectedpolids = finding_intersected_pols(pols, pols[idpol], thresholdintersection = thresholdintersection)
+        
+        if len(intersectedpolids) == 0 or count > upto:
+            break
+        
+        intersectedidslistbefore = list(np.array(intersectedpolids).T[0].astype(np.uint))
+        # getting geometries
+        interectedpols = [allpolspdc[i:i+1] for i in intersectedidslistbefore]
+        if verbose:
+                print('intersected {}'.format(len(interectedpols)))
+                print([feat.geometry.values[0] for feat in interectedpols] + [gpdmerged])
+                
+        gpdmerged = best_polygon([feat.geometry.values[0] for feat in interectedpols] + [gpdmerged], geometries = False) if gpdmerged is not None else best_polygon(interectedpols)
+        
+        
+        # merging gemetries into single one
+
+        polygon_ids = polygon_ids + [allpolspdc[testidcolumn].values[i] for i in intersectedidslistbefore]
+        # removing already found pos
+        allpolspdc = allpolspdc.iloc[[i for i in range(allpolspdc.shape[0]) if i not in intersectedidslistbefore],:]
+        count+=1
+    return gpdmerged, list(np.unique(polygon_ids))
+
+
+def merge_spatial_features(gpdgeometries: gpd.GeoDataFrame, mininterectedgeom:float = 0.2):
+    
+    """
+    Merge spatial features based on intersections.
+
+    Args:
+        gpdgeometries (geopandas.GeoDataFrame): GeoDataFrame containing geometries.
+        mininterectedgeom (float, optional): Minimum intersection threshold. Defaults to 0.2.
+
+    Returns:
+        list: List of GeoDataFrames containing merged polygons.
+    """
+    
+    copydf = gpdgeometries.copy()
+    copydf['idpol'] = list(range(gpdgeometries.shape[0]))
+    pbar = tqdm.tqdm(total=copydf.shape[0])
+
+    groupedpols = []
+    while copydf.shape[0]>0:
+        
+        startwith = 0
+        mergedpol, polids = finding_allintersection_for_polygon(copydf, startwith, 
+                                                                testidcolumn = 'idpol', 
+                                                                thresholdintersection = mininterectedgeom, upto = 3)
+        if mergedpol is not None:
+                
+            newgpdpol = gpd.GeoDataFrame({'idpol': [polids[0]],
+                                          'geometry': mergedpol}, crs=copydf.crs)
+
+            copydf = copydf.loc[[i not in polids for i in copydf['idpol'].values ]]
+            
+            copydf.reset_index(drop=True, inplace=True)
+            groupedpols.append(newgpdpol)
+            
+        if copydf.shape[0] % 10 == 0:
+            pbar.n = copydf.shape[0]
+            pbar.refresh()
+            
+            
+    return groupedpols
 
 def create_intersected_polygon(gpdpols, ref_pol, aoi_treshold = 0.3, invert = False):
 
