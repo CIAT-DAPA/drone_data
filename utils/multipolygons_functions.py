@@ -22,7 +22,7 @@ from .drone_data import calculate_vi_fromxarray
 from .drone_data import DroneData
 from .general import MSVEGETATION_INDEX
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Any
 
 import tqdm
 import random
@@ -624,13 +624,36 @@ def summary_data(data):
 
 
 ##
+                                    
+def extract_uav_datausing_geometry(rgbpath: Optional[str] = None,
+                                   mspath: Optional[str] = None,
+                                   pcpath: Optional[str] = None,
+                                   geometry: Optional[Any] = None,
+                                   rgb_channels: Optional[List[str]] = None,
+                                   mschannels: Optional[List[str]] = None, 
+                                   buffer: int = 0,
+                                   processing_buffer: float = 0, 
+                                   interpolate_pc: bool = True, 
+                                   rgb_asreference: bool = True):
+    
+    """
+    Extracts UAV data using provided paths and geometry information.
 
-def extract_uav_datausing_geometry(rgbpath = None,mspath =None,pcpath = None,geometry = None,rgb_channels = None,
-                                   mschannels = None, 
-                                   buffer = 0,
-                                   processing_buffer = 0, 
-                                   interpolate_pc = True, 
-                                   rgb_asreference = True):
+    Args:
+        rgbpath (str, optional): Path to RGB data. Defaults to None.
+        mspath (str, optional): Path to multispectral data. Defaults to None.
+        pcpath (str, optional): Path to point cloud data. Defaults to None.
+        geometry (Any, optional): Geometry information. Defaults to None.
+        rgb_channels (List[str], optional): List of RGB channels. Defaults to None.
+        mschannels (List[str], optional): List of multispectral channels. Defaults to None.
+        buffer (float, optional): Buffer size. Defaults to 0.
+        processing_buffer (int, optional): Processing buffer size. Defaults to 0.
+        interpolate_pc (bool, optional): Flag to interpolate point cloud data. Defaults to True.
+        rgb_as_reference (bool, optional): Flag to use RGB as reference. Defaults to True.
+
+    Returns:
+        Any: Information extracted from UAV data.
+    """
     
     uavdata = IndividualUAVData(rgbpath, 
                     mspath, 
@@ -659,34 +682,25 @@ class MultiMLTImages(CustomXarray):
     A class for extracting, processing, and stacking multi-temporal remote sensing data.
 
     Attributes:
-    ----------
-    rgb_paths : list
-        Paths to RGB orthomosaic imagery.
-    ms_paths : list
-        Paths to multispectral orthomosaic imagery.
-    pointcloud_paths : list
-        Paths to point cloud data.
-    processing_buffer : float
-        A buffer value for image processing.
-    rgb_channels : list
-        Names of RGB channels.
-    ms_channels : list
-        Names of multispectral channels.
-    path : str
-        Directory path for customdict xarray files.
-    geometries : GeoDataFrame
-        Geopandas DataFrame of spatial geometries.
+        rgb_paths (list): Paths to RGB orthomosaic imagery.
+        ms_paths (list): Paths to multispectral orthomosaic imagery.
+        pointcloud_paths (list): Paths to point cloud data.
+        processing_buffer (float): A buffer value for image processing.
+        rgb_channels (list): Names of RGB channels.
+        ms_channels (list): Names of multispectral channels.
+        path (str): Directory path for customdict xarray files.
+        geometries (GeoDataFrame): Geopandas DataFrame of spatial geometries.
     """
     
     def __init__(self, 
-                rgb_paths: Optional[List[str]]=None, 
-                ms_paths=None, 
-                pointcloud_paths=None, 
-                spatial_file=None, 
-                rgb_channels=None, 
-                ms_channels=None, 
-                path = None,
-                processing_buffer=0.6,
+                rgb_paths: Optional[List[str]] = None, 
+                ms_paths: Optional[List[str]] = None, 
+                pointcloud_paths: Optional[List[str]] = None, 
+                spatial_file: str=None, 
+                rgb_channels: Optional[List[str]]=None, 
+                ms_channels: Optional[List[str]]=None, 
+                path: str = None,
+                processing_buffer: float=0.6,
                 **kwargs):
         
         """
@@ -696,38 +710,25 @@ class MultiMLTImages(CustomXarray):
         from various sources such as RGB, multispectral (MS), and point cloud data. It 
         supports operations like data extraction, scaling, and calculation of vegetation indices.
 
-        Parameters:
-        ----------
-        rgb_paths : list, optional
-            List of paths to RGB orthomosaic imagery directories.
-        ms_paths : list, optional
-            List of paths to multispectral orthomosaic imagery directories.
-        pointcloud_paths : list, optional
-            List of paths to point cloud data directories (XYZ format).
-        spatial_file : str, optional
-            Path to a vector file (e.g., GeoJSON, Shapefile) defining spatial geometries for extraction.
-        rgb_channels : list, optional
-            Names of the channels in the RGB data (e.g., ['R', 'G', 'B']).
-        ms_channels : list, optional
-            Names of the channels in the multispectral data.
-        path : str, optional
-            Path to a directory where customdict xarray files are stored as pickle files.
-        processing_buffer : float, optional
-            Buffer value (in meters) used during image processing to handle edge effects.
-        **kwargs : dict
-            Additional keyword arguments to be passed to the parent class (CustomXarray).
+        Args:
+            rgb_paths (list, optional): List of paths to RGB orthomosaic imagery directories.
+            ms_paths (list, optional): List of paths to multispectral orthomosaic imagery directories.
+            pointcloud_paths (list, optional): List of paths to point cloud data directories (XYZ format).
+            spatial_file (str, optional): Path to a vector file (e.g., GeoJSON, Shapefile) defining spatial geometries for extraction.
+            rgb_channels (list, optional): Names of the channels in the RGB data (e.g., ['R', 'G', 'B']).
+            ms_channels (list, optional): Names of the channels in the multispectral data.
+            path (str, optional): Path to a directory where customdict xarray files are stored as pickle files.
+            processing_buffer (float, optional): Buffer value (in meters) used during image processing to handle edge effects.
+            **kwargs: Additional keyword arguments to be passed to the parent class (CustomXarray).
 
         Raises:
-        ------
-        FileNotFoundError
-            If the provided `spatial_file` does not exist.
+            FileNotFoundError: If the provided `spatial_file` does not exist.
 
         Examples:
-        --------
-        #### Initializing with RGB and MS data paths
-        multi_mlt_images = MultiMLTImages(rgb_paths=["/path/to/rgb"], 
-                                        ms_paths=["/path/to/ms"],
-                                        spatial_file="/path/to/spatial/file.sh")
+            #### Initializing with RGB and MS data paths
+            multi_mlt_images = MultiMLTImages(rgb_paths=["/path/to/rgb"], 
+                                              ms_paths=["/path/to/ms"],
+                                              spatial_file="/path/to/spatial/file.sh")
         """
         
         self.rgb_paths = rgb_paths
@@ -764,18 +765,10 @@ class MultiMLTImages(CustomXarray):
         """
         Exports data for an individual geometry to a pickle file.
 
-        Parameters:
-        ----------
-        geometry_id : int
-            Index of the geometry.
-        path : str
-            Path to export directory.
-        fn : str
-            Filename for export.
-        
-        Returns:
-        -------
-        None
+        Args:
+            geometry_id (int): Index of the geometry.
+            path (str): Path to export directory.
+            fn (str): Filename for export.
         """
         
         self.individual_data(geometry_id, **kwargs)
@@ -785,17 +778,12 @@ class MultiMLTImages(CustomXarray):
         """
         Extracts sample data from geopandas polygons.
 
-        Parameters:
-        ----------
-        channels : List[str], optional
-            List of channels to extract.
-        n_samples : int
-            Number of samples to extract.
+        Args:
+            channels (List[str], optional): List of channels to extract.
+            n_samples (int): Number of samples to extract.
 
         Returns:
-        -------
-        Dict[str, List[float]]:
-            Extracted data organized by channel.
+            Dict[str, List[float]]: Extracted data organized by channel.
         """
         
         import random
@@ -826,32 +814,22 @@ class MultiMLTImages(CustomXarray):
             except:
                 pass
         return dictdata
-    
-
-    
+       
     def export_multiple_data(self, path, fnincolumn = None,njobs = 1,verbose=False, **kwargs):
         """
         Exports data for multiple geometries to specified path.
 
-        Parameters:
-        ----------
-        path : str
-            Path to export directory.
-        fnincolumn : str, optional
-            Column name in geometry DataFrame containing filenames.
-        njobs : int, optional
-            Number of parallel jobs for export.
-        verbose : bool, optional
-            Whether to display a progress bar.
+        Args:
+            path (str): Path to export directory.
+            fnincolumn (str, optional): Column name in geometry DataFrame containing filenames.
+            njobs (int, optional): Number of parallel jobs for export.
+            verbose (bool, optional): Whether to display a progress bar.
 
         Returns:
-        -------
-        None
+            None
         
         Raises:
-        ------
-        Exception: If any of the parallel tasks fail.
-        
+            Exception: If any of the parallel tasks fail.
         """
         
         # defining export file names
@@ -880,7 +858,16 @@ class MultiMLTImages(CustomXarray):
                         print(f"A task generated an exception: {exc}")
                         raise
         
-    def _time_pointsextraction(self,tp):
+    def _time_pointsextraction(self,tp:int):
+        """
+        Extracts data for a specific time point.
+
+        Args:
+            tp (int): Time point index.
+
+        Returns:
+            DataArray: Data extracted at the specified time point.
+        """
         
         rgbpath = self.rgb_paths[tp] if self.rgb_paths is not None else None
         mspath = self.ms_paths[tp] if self.ms_paths is not None else None
@@ -911,6 +898,11 @@ class MultiMLTImages(CustomXarray):
             rgb_asreference (bool, optional): Use RGB as a reference for co-registration. Defaults to True.
             datesnames (list, optional): Names for dates axis in the data cube. Defaults to None.
             buffer (float, optional): Buffer value for geometry extraction. Defaults to None.
+            paralleltimepoints (bool, optional): Whether to process time points in parallel. Defaults to False.
+            njobs (int, optional): Number of parallel jobs. Defaults to None.
+
+        Returns:
+            DataArray: Extracted data for the individual geometry.
         """
         
         self._scalarflag = False
@@ -953,17 +945,12 @@ class MultiMLTImages(CustomXarray):
         """
         Reads individual data from a pickle file.
 
-        Parameters:
-        ----------
-        file : str, optional
-            Filename to read.
-        path : str, optional
-            Directory path containing the file.
-        dataformat : str, optional
-            Format of the data in the file.
+        Args:
+            file (str, optional): Filename to read.
+            path (str, optional): Directory path containing the file.
+            dataformat (str, optional): Format of the data
 
         Returns:
-        -------
         xarray.DataArray
             Data read from the file as xarray.
         """

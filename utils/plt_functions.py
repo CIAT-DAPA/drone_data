@@ -5,6 +5,8 @@ import plotly.graph_objs as go
 
 import math
 
+from typing import List
+
 def scaleminmax(values):
     return ((values - np.nanmin(values)) /
             (np.nanmax(values) - np.nanmin(values)))
@@ -56,21 +58,20 @@ def plot_multibands_fromxarray(xarradata, bands, figsize = (12,8), xinverse = Tr
 
 
 
-def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z', 
-                        rgb_bandnames = ['red','green', 'blue']):
+def plot_3d_cloudpoints(xrdata, scale_xy: int = 1, nonvalue: int = 0, zaxisname: str = 'z', 
+                        rgb_bandnames: List[str]= ['red','green', 'blue']):
     """
-    this function creates a 3D interactive function from a 2d image using xarra data
+    Create a 3D interactive plot from a 2D image using xarray data.
 
-    Parameters:
-    ----------
-    xrdata : xarray data
-    scale_xy: int, optional
-        factor to scale the x and y axis
-    nonvalue: int, optional
-        a value that represent na pixels
-    zaxisname: str, optional
-        the z variable name
-        
+    Args:
+        xrdata (xarray.DataArray): Xarray data containing the image.
+        scale_xy (int, optional): Factor to scale the x and y axes. Defaults to 1.
+        nonvalue (int, optional): A value that represents NA pixels. Defaults to 0.
+        zaxisname (str, optional): The name of the z variable. Defaults to 'z'.
+        rgb_bandnames (list of str, optional): Names of the RGB bands. Defaults to ['red', 'green', 'blue'].
+
+    Returns:
+        None
     """
 
     plotdf = xrdata.to_dataframe().copy()
@@ -91,15 +92,14 @@ def plot_3d_cloudpoints(xrdata, scale_xy = 1, nonvalue = 0, zaxisname = 'z',
                                plotdf[rgb_bandnames[1]].values[nonvaluemask], 
                                plotdf[rgb_bandnames[2]].values[nonvaluemask])]))
 
-    layout = go.Layout(margin=dict(l=0,
-                               r=0,
-                               b=0,
-                               t=0),
-                    scene=dict(
-                     aspectmode='data'))
+    # Define layout
+    layout = go.Layout(
+        margin=dict(l=0, r=0, b=0, t=0),
+        scene=dict(aspectmode='data')
+    )
 
-    data = [xyzrgbplot]
-    fig = go.Figure(data=data, layout=layout)
+    
+    fig = go.Figure(data=[xyzrgbplot], layout=layout)
     fig.show()
 
 
