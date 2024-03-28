@@ -984,9 +984,8 @@ class MultiMLTImages(CustomXarray):
             Whether to apply scaling again if already applied.
 
         Returns:
-        -------
         xarray.DataArray
-            Scaled UAV data.
+            Data read from the file as xarray.
         """
         
         assert type(scaler) == dict
@@ -1002,19 +1001,21 @@ class MultiMLTImages(CustomXarray):
         return self.xrdata 
             
                     
-    def calculate_vi(self, vilist, viequations: List[str] = None, overwritevi: bool = True, verbose: bool = False):
+    def calculate_vi(self, vilist, viequations: List[str] = None, overwritevi: bool = True, verbose: bool = False, updatedatacube = True):
         """
         Calculates specified vegetation indices on the data.
 
-        Parameters:
-        ----------
-        vilist : List[str]
-            List of vegetation indices to calculate.
-        viequations : Dict[str, str], optional
-            Custom equations
+        Args:
+            vilist (List[str], optional): List of vegetation indices to calculate.
+            viequations (Dict[str, str], optional): Custom equations
+            overwritevi (bool, optional): Overwrite existing index in the datacube. Defaults to True.
+            verbose (bool, optional): verbose. Defaults to False.
+            updatedatacube (bool, optional): update class datacube. Defaults to True.
+        
+        Returns:
+        xarray.DataArray
+            Data read from the file as xarray.
             
-        overwritevi: bool, optional 
-            Overwrite existing index in the datacube. Defaults to True.
             
         """
         
@@ -1030,9 +1031,10 @@ class MultiMLTImages(CustomXarray):
             xrdatac = calculate_vi_fromxarray(xrdatac,vi = vi,
                                               expression = viequations[vi], 
                                               overwrite=overwritevi)
-        
-        self.xrdata = xrdatac
-        return self.xrdata
+        if updatedatacube:
+            self.xrdata = xrdatac
+            
+        return xrdatac
     
     def summarize_as_dataframe(self, channels = None,func = np.nanmedian):
         """

@@ -24,6 +24,10 @@ import json
 
 from typing import List, Optional, Union
 
+
+### TODO: FutureWarning: The return type of `Dataset.dims` will be changed to return a set of dimension names in future, 
+# in order to be more consistent with `DataArray.dims`. To access a mapping from dimension names to lengths, please use `Dataset.sizes`
+
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):

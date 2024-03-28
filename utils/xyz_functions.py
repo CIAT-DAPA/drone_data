@@ -176,21 +176,24 @@ def read_cloudpointsfromxyz(file_path, bb, buffer= 0.1, sp_res = 0.005, ext='.xy
     return dfp
 
 
-def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_probability', 
-                          quantile_val = .85, stdtimes = 1):
+def get_baseline_altitude(clouddf: pd.DataFrame, nclusters: int = 15, nmaxcl: int = 4, method: str = 'max_probability', 
+                          quantile_val: float = .85, stdtimes: float = 1):
+    """
+    Calculate the baseline altitude based on the provided point cloud dataframe.
+
+    Args:
+        clouddf (pd.DataFrame): DataFrame containing cloud data. It must content columns x, y and z.
+        nclusters (int, optional): Number of clusters. Defaults to 15.
+        nmaxcl (int, optional): Maximum number of clusters. Defaults to 4.
+        method (str, optional): Method to calculate baseline altitude. 
+            Options: 'max_probability', 'cluster', 'quantile', 'center'. Defaults to 'max_probability'.
+        quantile_val (float, optional): Quantile value. Defaults to 0.85.
+        stdtimes (int, optional): Standard deviation times. Defaults to 1.
+
+    Returns:
+        float: Baseline altitude value.
+    """
     
-    """
-    a function to get the distribution value for a given quantile, for both border
-    ...
-    Parameters
-    ----------
-    nclusters:
-        if cluster method is activated, the number of cluster which the data will be clustered
-    nmaxcl:
-        number of cluter which will be used to average and obtain a baseline
-    """
-
-
     df = clouddf.copy()
     bsl = None
     if method == 'cluster':
@@ -199,7 +202,8 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_pro
 
         bsl = df.groupby('cluster').agg({2: 'mean'}
             ).sort_values(by=[2], ascending=False).iloc[0:nmaxcl].mean().values[0]
-
+        
+        return bsl
     if method == 'max_probability':
 
         ydata = df.iloc[:,1].values.copy()
@@ -217,11 +221,24 @@ def get_baseline_altitude(clouddf, nclusters = 15, nmaxcl = 4, method = 'max_pro
         valmax1 = datam[np.argmax(ys1(datam))]
         valmax2 = datah[np.argmax(ys2(datah))]
         bsl = (valmax1 + valmax2)/2
+        return bsl
 
     if method == "quantile":
         bsl = df.iloc[:,2].quantile(quantile_val)
+        return bsl
+        
+    if method == "center":
+        meandx= [np.mean(df.x) - stdtimes*np.std(df.x),
+                np.mean(df.x) + stdtimes*np.std(df.x)]
+        meandy= [np.mean(df.y) - stdtimes*np.std(df.y),
+                np.mean(df.y) + stdtimes*np.std(df.y)]
+
+        centeralt = df.loc[np.logical_and(np.logical_and(df.x<= meandx[1],df.x>= meandx[0]),
+                                          np.logical_and(df.y<= meandy[1],df.y>= meandy[0]))]
+        bsl = np.mean(centeralt.z)
+        return bsl
     
-    return bsl
+    
 
 
 #def interpolate_cloud_points(

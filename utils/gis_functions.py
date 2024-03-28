@@ -36,6 +36,32 @@ from typing import List, Optional
 def scale_255(data):
     return ((data - data.min()) * (1 / (data.max() - data.min()) * 255)).astype('uint8')
 
+
+def estimate_pol_buffer(xcoords: List[float], ycoords: List[float], newarea: float) -> float:
+    """
+    Estimate the buffer required to achieve a desired area around a polygon.
+
+    Args:
+        xcoords (list): List containing x min and x max of the polygon vertices.
+        ycoords (list): List containing y min and y max of the polygon vertices.
+        newarea (float): Desired area for the buffer around the polygon.
+
+    Returns:
+        float: Buffer distance required to achieve the desired area.
+    """
+    
+    width = xcoords[1] - xcoords[0]
+    height = ycoords[1] - ycoords[0]
+    a1 = (width * height)
+    a2 = newarea
+    delta1 = (-(width + height) + np.sqrt(((width + height)*(width + height)) - 4 * (a1-a2)))/2
+    delta2 = (-(width + height) - np.sqrt(((width + height)*(width + height)) - 4 * (a1-a2)))/2
+    delta = delta1 if delta1> delta2 else delta2
+
+    return delta
+
+
+
 ## basic
 def xy_fromtransform(transform, width, height):
     """
@@ -641,8 +667,20 @@ def calculate_AoI_fromlist(data, ref, list_ids, invert = False):
 
 
 
-def get_minmax_pol_coords(p):
-    coords = p.exterior.xy
+def get_minmax_pol_coords(polygon: Polygon) -> list:
+    """
+    Get the minimum and maximum coordinates of a Shapely Polygon.
+
+    Args:
+        polygon (Polygon): Shapely Polygon object.
+
+    Returns:
+        list: List containing minimum and maximum x-coordinates and y-coordinates in the format
+              [[xmin, xmax], [ymin, ymax]].
+
+    """
+    
+    coords = polygon.exterior.xy
     x1minr, y1minr = np.min(coords, axis = 1)
     x2maxr, y2maxr = np.max(coords, axis = 1)
     #x1minr = np.min(coordsx)
