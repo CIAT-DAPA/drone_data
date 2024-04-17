@@ -160,19 +160,38 @@ class SplitIds(object):
         
 
 class SplitIdsClassification(SplitIds):
+    """
+    Extends SplitIds to support stratified splitting based on classification targets, including stratified K-fold splitting.
+
+    Attributes
+    ----------
+    targetvalues : np.ndarray
+        Array of target classification values corresponding to each data point.
+    categories : np.ndarray
+        Unique categories present in the target values.
+    mindataper_category : Optional[int]
+        The minimum number of data points present in any category.
+    _datapercategory : Dict[str, int]
+        A dictionary mapping category to the number of data points in that category.
     
-    def _get_mindata(self):
-        
-        mindata = len(self.targetvalues)
-        mincat = -1
-        for i in list(self._datapercategory.keys()):
-            if self._datapercategory[i]<mindata:
-                mindata = self._datapercategory[i]
-                mincat = i
-                
-        return mindata,mincat 
+    Methods
+    -------
+    countdata_percategory(targetvalues)
+        Counts the number of data points per category.
+    stratified_kfolds(kfolds, shuffle)
+        Generates stratified K-folds for the provided target values.
+    """
     
     def countdata_percategory(self, targetvalues):
+        """
+        Counts the number of data points per category in the target values.
+
+        Parameters
+        ----------
+        targetvalues : np.ndarray
+            Target classification values for each data point.
+        """
+        
         listperc = {}
         for i in range(len(self.categories)):
             datapercat = np.sum(targetvalues == self.categories[i])
@@ -182,8 +201,41 @@ class SplitIdsClassification(SplitIds):
             
         self._datapercategory = listperc   
     
-    def _get_new_stratified_ids(self,listids, seed = 123):
-        
+    def _get_mindata(self):
+        """
+        Finds the category with the minimum number of data points.
+
+        Returns
+        -------
+        Tuple[int, str]
+            The minimum number of data points in any category and the corresponding category.
+        """
+        mindata = len(self.targetvalues)
+        mincat = -1
+        for i in list(self._datapercategory.keys()):
+            if self._datapercategory[i]<mindata:
+                mindata = self._datapercategory[i]
+                mincat = i
+                
+        return mindata,mincat 
+    
+    def _get_new_stratified_ids(self,listids: List[int], 
+                                seed: int = 123) -> List[int]:
+        """
+        Generates new stratified ids based on the minimum data per category.
+
+        Parameters
+        ----------
+        listids : List[int]
+            List of ids to stratify.
+        seed : int, optional
+            Random seed for reproducibility, by default 123.
+
+        Returns
+        -------
+        List[int]
+            A list of new stratified ids.
+        """
         stratids = []
         #print(self.mindataper_category)
         tmpcat = self.targetvalues[listids]
@@ -203,7 +255,23 @@ class SplitIdsClassification(SplitIds):
         return list(itertools.chain.from_iterable(stratids))
     
     
-    def stratified_kfolds(self, kfolds, shuffle = True):
+    def stratified_kfolds(self, kfolds: int, shuffle: bool = True) -> List[List[List[int]]]:
+        """
+        Generates stratified K-folds for cross-validation.
+
+        Parameters
+        ----------
+        kfolds : int
+            Number of folds for the cross-validation.
+        shuffle : bool, optional
+            Whether to shuffle the data before splitting into folds, by default True.
+
+        Returns
+        -------
+        List[List[List[int]]]
+            A list of folds, each containing training and validation ids.
+        """
+        
         #if self.mindataper_category:        
         kf = StratifiedKFold(n_splits=kfolds, shuffle = shuffle, random_state = self.seed)
         
@@ -225,10 +293,37 @@ class SplitIdsClassification(SplitIds):
             
     
     def __init__(self, 
-                 targetvalues=None, 
-                 ids=None, 
-                 val_perc=None, test_perc=None, seed=123, shuffle=True, testids_fixed=None, 
-                 stratified = True) -> None:
+                 targetvalues: np.ndarray, 
+                 ids: Optional[List[int]] = None, 
+                 val_perc: Optional[float] = None, 
+                 test_perc: Optional[float] = None, 
+                 seed: int = 123, 
+                 shuffle: bool = True, 
+                 testids_fixed: Optional[List[int]] = None,
+                 stratified: bool = True) -> None:
+        
+        """
+        Initializes the SplitIdsClassification instance.
+
+        Parameters
+        ----------
+        targetvalues : np.ndarray
+            Target classification values for each data point.
+        ids : Optional[List[int]], optional
+            List of ids representing data points, by default None.
+        val_perc : Optional[float], optional
+            Percentage of data to allocate to validation set, by default None.
+        test_perc : Optional[float], optional
+            Percentage of data to allocate to test set, by default None.
+        seed : int, optional
+            Random seed for reproducibility, by default 123.
+        shuffle : bool, optional
+            Whether to shuffle data before splitting, by default True.
+        testids_fixed : Optional[List[int]], optional
+            List of ids to always include in the test set, by default None.
+        stratified : bool, optional
+            Whether the split should be stratified, by default True.
+        """
         
         self.targetvalues = targetvalues
         self.categories = np.unique(targetvalues)
@@ -238,23 +333,58 @@ class SplitIdsClassification(SplitIds):
         self._initial_val_ids = copy.deepcopy(self.val_ids)
         self._initial_test_ids = copy.deepcopy(self.test_ids)
         self.mindataper_category = None
+        self._datapercategory = {}
             
 
 class SplitData(object):
+    """
+    A class for managing data splits into test, training, and validation sets, as well as supporting K-fold splitting.
 
+    Attributes
+    ----------
+    data : Any
+        The complete dataset from which subsets will be extracted.
+    ids_partition : Any
+        An object containing attributes `test_ids`, `training_ids`, `val_ids`, and a method `kfolds()` for K-fold splitting.
+    kfolds : Optional[int]
+        The number of K-folds for cross-validation. If None, K-fold splitting is not used.
+
+    Methods
+    -------
+    kfold_data(kifold)
+        Returns training and validation data for the specified K-fold.
+    """
+    
     @property
     def test_data(self):
+        """Retrieves the test subset of the data."""
         return retrieve_datawithids(self.data, self.ids_partition.test_ids) 
     
     @property
     def training_data(self):
+        """Retrieves the training subset of the data."""
         return retrieve_datawithids(self.data, self.ids_partition.training_ids) 
     
     @property
     def validation_data(self):
+        """Retrieves the validation subset of the data."""
         return retrieve_datawithids(self.data, self.ids_partition.val_ids) 
 
     def kfold_data(self, kifold):
+        """
+        Returns training and validation data subsets for the specified K-fold index.
+
+        Parameters
+        ----------
+        kifold : int
+            The index of the fold for which to retrieve the data.
+
+        Returns
+        -------
+        Tuple[Optional[Any], Optional[Any]]
+            A tuple containing the training and validation datasets for the specified fold.
+            Returns (None, None) if K-folds are not defined or if the fold index is out of range.
+        """
         tr, val = None, None
         if self.kfolds is not None:
             if kifold <= self.kfolds:
@@ -265,7 +395,18 @@ class SplitData(object):
         return tr, val
         
     def __init__(self, df, splitids, kfolds = None) -> None:
+        """
+        Initializes the SplitData instance with the dataset, an object for ID partitions, and an optional K-fold count.
 
+        Parameters
+        ----------
+        df : Any
+            The complete dataset.
+        split_ids : Any
+            An object containing ID partitions for splitting the data.
+        kfolds : Optional[int], optional
+            The number of folds for K-fold cross-validation, by default None.
+        """
         self.data = df
         self.ids_partition = splitids
         self.kfolds = kfolds
