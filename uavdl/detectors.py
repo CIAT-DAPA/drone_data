@@ -5,6 +5,7 @@ from ..utils.drone_data import DroneData
 from ..utils.gis_functions import from_bbxarray_2polygon, merging_overlaped_polygons, merge_spatial_features
 from ..utils.multipolygons_functions import IndividualUAVData
 from ..utils.xr_functions import add_2dlayer_toxarrayr
+from ..utils.data_processing import from_xarray_2array
 #from ..utils.segmentation_datasets import SegmentationPrediction
 
 
@@ -275,6 +276,28 @@ class Drone_ODetector(DroneData):
         
 
 #### segmentation
+
+
+
+class Drone_ISegmentation(DroneData):
+
+    def __init__(self, detector, orthomosaic_path: str, bands: List[str] = None, 
+                 multiband_image: bool = False, bounds: Dict = None,
+                 device:str = None):
+        
+        super().__init__(orthomosaic_path, bands, multiband_image, bounds)
+        self.device = device
+        self.detector = detector
+
+    def detect(self, xrimage, threshold = 0.2, segment_threshold = 180):
+        
+        if isinstance(xrimage, xr.Dataset):
+            imagedata = xrimage.to_array().values.astype(np.uint8)
+        else:
+            imagedata = xrimage.values.astype(np.uint8)
+            
+        img = from_xarray_2array(xrimage, self.rgbbands , True)
+        
 
 """    
 class UAVSegmentation(SegmentationPrediction):

@@ -1,9 +1,13 @@
 import os
 from ..utils.decorators import check_output_fn
+from ..utils.general import euclidean_distance
+
 import torch
 import numpy as np
 import cv2
 import torchvision
+from typing import List, Tuple
+
 
 @check_output_fn
 def save_yololabels(bbyolo, path, fn,suffix = '.txt'):
@@ -313,3 +317,100 @@ def non_max_suppression(
         #    break  # time limit exceeded
 
     return output
+
+### instance segmentation 
+
+def distances_from_bbs_toimagecenter(image_shape: Tuple[int, int], bb_predictions: List[Tuple[int, int, int, int]], metric: str = 'euclidean'):
+    """
+    Calculate distances from bounding boxes to the center of the image.
+
+    Parameters:
+    -----------
+    image_shape : Tuple[int, int]
+        Shape of the image in (height, width) format.
+    bb_predictions : List[Tuple[int, int, int, int]]
+        List of bounding box predictions in (x1, y1, x2, y2) format.
+    metric : str, optional
+        Metric to use for calculating distances. Defaults to 'euclidean'.
+
+    Returns:
+    --------
+    Tuple[None, List[float]]
+        Tuple containing None (for compatibility with previous version) and a list of distances from bounding boxes to the image center.
+    """
+    
+    if metric == 'euclidean':
+        fun = euclidean_distance
+                
+    height, width = image_shape
+    center = width//2,height//2
+        
+    distpos = None
+    dist = []
+    if bb_predictions is None or len(bb_predictions) == 0:
+        return distpos, dist 
+    else:
+        for i in range(len(bb_predictions)):
+            x1,y1,x2,y2 = bb_predictions[i]
+            widthcenter = (x1+x2)//2
+            heightcenter = (y1+y2)//2
+
+            dist.append(fun([widthcenter,heightcenter],center))
+
+        return distpos, dist
+    
+
+
+def segmentation_layers_selection(mask_layer_list: List[np.ndarray], bbs_list: List[Tuple],
+                               segmentation_threshold: float = 180,
+                               nlayers_to_add = 1,
+                               distance_threshold: float = None, 
+                               pixelsize: float = None):
+    
+    """
+    Select segmentation layers based on distance from bounding boxes to the image center.
+
+    Parameters:
+    -----------
+    mask_layer_list : List[np.ndarray]
+        List of mask layers.
+    bbs_list : List[Tuple[int, int, int, int]]
+        List of bounding boxes in (x1, y1, x2, y2) format.
+    segmentation_threshold : float, optional
+        Threshold value for segmentation. Defaults to 180.
+    nlayers_to_add: int, optional
+        Number of segmentation layers to add in the datacube. Default to 1.
+    distance_threshold : float, optional
+        Threshold distance from the image center. If None, all layers are considered. Defaults to None.
+    pixelsize : float, optional
+        Pixel size in cm. If provided, distances are converted from pixels to cm. Defaults to None.
+
+    Returns:
+    --------
+    Tuple[List[np.ndarray], List[float]]
+        Tuple containing a list of selected segmentation layers and corresponding distances from bounding boxes to the image center.
+    """
+    
+    height, width = mask_layer_list[0].shape
+    ### segmetnation layer selection
+    layerstoadd = []
+
+    _, distances =  distances_from_bbs_toimagecenter((height, width),bbs_list)
+    sortedord = np.argsort(distances)
+    # pixel size to cm
+    distances = [i*pixelsize for i in distances] if pixelsize else distances
+        
+    layerstoadd = []
+    for nlayer in sortedord:
+        if distances[nlayer]<=distance_threshold:
+            layyertoadd = mask_layer_list[nlayer].copy()
+            layyertoadd[layyertoadd<segmentation_threshold] = 0
+            layyertoadd[layyertoadd>=segmentation_threshold] = 1
+            
+            layerstoadd.append(layyertoadd)
+        if len(layerstoadd) > nlayers_to_add:
+            break
+    return layerstoadd, distances
+
+
+### data augmentation
