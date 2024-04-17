@@ -1,16 +1,22 @@
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from skimage.morphology import convex_hull_image
+
+import os
 import numpy as np
 import pandas as pd
 import xarray
 import math
-from skimage.morphology import convex_hull_image
+import random
 
-
+from .datacube_transforms import DataCubeProcessing
+from .xr_functions import CustomXarray, from_dict_toxarray, calculate_lab_from_xarray, crop_xarray_using_mask
+from .drone_data import calculate_vi_fromxarray
 from .gis_functions import centerto_edgedistances_fromxarray,get_filteredimage
 from .image_functions import getcenter_from_hull, calculate_differencesinshape, img_padding
 
+from typing import List, Optional, Dict
 
 
 MORPHOLOGICAL_METRICS = [
@@ -605,3 +611,290 @@ class Phenomics:
         self.varnames = list(xrdata.keys())
     
         
+
+def from_quantiles_dict_to_df(quantiles_dict: Dict, 
+                              idvalue: Optional[str] = None) -> pd.DataFrame:
+    """
+    Converts a dictionary with quantiles data to a pandas DataFrame, adjusts variable names, 
+    and restructures the DataFrame to have quantiles as columns and an optional ID value.
+
+    Parameters
+    ----------
+    quantiles_dict : Dict
+        The dictionary containing quantiles data, with keys as variable names.
+    idvalue : Optional[str], optional
+        An identifier value to be added to all rows in the output DataFrame, by default None.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with the quantiles data restructured, having an ID value (if provided),
+        and quantiles as columns for each variable.
+    """
+    
+    
+    df =  pd.DataFrame(quantiles_dict)
+    
+    df_long = pd.melt(df, 
+                      value_vars=list(quantiles_dict.keys()), ignore_index=False).reset_index()
+    
+    varnames = ['{}_{}'.format(var, ind).replace('.','') for var, ind in zip(
+        df_long.variable.values,df_long['index'].values)]
+    
+    df_long['variable'] = varnames
+    idvalue = '0' if idvalue is None else idvalue
+    df_long['id'] = idvalue
+    
+    return df_long.pivot(index=['id'],columns = 
+                         "variable",values ="value").reset_index()
+        
+
+def calculate_quantiles(nparray, quantiles = [0.25,0.5,0.75]):
+    """
+    Calculates specified quantile values for each 1D array along the first dimension of a numpy array.
+
+    Parameters
+    ----------
+    nparray : np.ndarray
+        The input numpy array from which quantiles are calculated. It expects an array order of HW. if a 3D array is given
+        the array order must be CHW.
+    quantiles : List[float], optional
+        The list of quantiles to calculate, by default [0.25, 0.5, 0.75].
+
+    Returns
+    -------
+    List[Dict[float, float]]
+        A list of dictionaries, with each dictionary containing the quantiles for each 1D array within the numpy array.
+        The keys are the quantile values requested, and the values are the calculated quantiles.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> nparray = np.array([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
+    >>> calculate_quantiles(nparray)
+    [{0.25: 15.0, 0.5: 20.0, 0.75: 25.0}, {0.25: 45.0, 0.5: 50.0, 0.75: 55.0}, {0.25: 75.0, 0.5: 80.0, 0.75: 85.0}]
+    """
+    
+    listqvalues = []
+    if len(nparray.shape)>2:
+        for i in range(nparray.shape[0]):
+            datq = {q : np.nanquantile(nparray[i].flatten(),q = q) for q in quantiles}
+            listqvalues.append(datq)
+    else:
+        listqvalues = {q : np.nanquantile(nparray.flatten(),q = q) for q in quantiles}
+            
+    return listqvalues
+
+
+class PhenomicsDataCube(DataCubeProcessing):
+    """
+    A class for summarizing data cube, specifically tailored for
+    generating quantile summaries of 2D and 3D image channels.
+
+    Attributes
+    ----------
+    xrdata : xarray.Dataset
+        The xarray dataset containing the phenomic data.
+    _channel_names : List[str]
+        A list of channel names available in the dataset.
+    _array_order : str
+        The order of dimensions in the dataset, e.g., 'CHW' for channels, height, width.
+    _ndims : int
+        The number of dimensions in the dataset.
+    _navalue : float
+        The value used in the dataset to represent N/A or missing data.
+    """
+    def __init__(self, xrdata: xarray.Dataset = None, metrics: dict = None, 
+                 array_order:str = 'CHW', navalue: float = 0) -> None:
+        """
+        Initializes the PhenomicsFromDataCube instance with the provided xarray dataset and configuration.
+
+        Parameters
+        ----------
+        xrdata : xarray.Dataset
+            The xarray dataset containing the phenomic data.
+        metrics : Optional[Dict], optional
+            A dictionary of metrics for summarization, by default None.
+        array_order : str, optional
+            The order of dimensions in the dataset, e.g., 'CHW' for channels, height, width, by default 'CHW'.
+        navalue : float, optional
+            The value used in the dataset to represent N/A or missing data, by default np.nan.
+        """
+        self.xrdata = xrdata
+        self._array_order = array_order
+        self._navalue = navalue
+        self._update_params()
+    
+    def __call__(self, xrdata: xarray.Dataset, 
+                 channels: Optional[List[str]] = None,
+                 vegetation_indices: Optional[List[str]] = None,
+                 color_spaces: Optional[List[str]] = None,
+                 quantiles: Optional[List[float]] = None,
+                 rgb_channels: Optional[List[str]] = ['red','green','blue']) -> Dict[str, Dict[float, float]]:
+        """
+        Makes the instance callable, allowing it to directly operate on an xarray.Dataset
+        to summarize its data into quantiles for specified channels.
+
+        Parameters
+        ----------
+        xrdata : xarray.Dataset
+            The xarray dataset to be analyzed and summarized.
+        channel_names : Optional[List[str]], optional
+            A list of channel names to be summarized. If None, all channels will be summarized, by default None.
+        quantiles : Optional[List[float]], optional
+            A list of quantiles to calculate for each specified channel. If None, defaults to median (0.5), by default None.
+        rgbchannels : List[str], optional
+            List of channel names representing RGB. Defaults to ['red', 'green', 'blue'].
+        Returns
+        -------
+        Dict[str, List[Dict[float, float]]]
+            A dictionary where keys are channel names and values are lists of dictionaries, each containing calculated quantile values.
+        """
+        
+        self.xrdata = xrdata
+        channels = [] if channels is None else channels
+        color_spaces = [] if color_spaces is None else color_spaces
+        vegetation_indices = [] if vegetation_indices is None else vegetation_indices
+        
+        ## check vi list
+        vegetation_indices = vegetation_indices if isinstance(vegetation_indices, list) else [vegetation_indices]
+        vitocalculate = [channelname for channelname in vegetation_indices if channelname in self._available_vi]
+        if len(vitocalculate)>0:
+            self.calculate_vegetation_indices(vi_list=vitocalculate, update_data=True)
+            self._update_params()
+            
+        ## check colors
+        color_spaces = color_spaces if isinstance(color_spaces, list) else [color_spaces]
+        coloravail = list(self._available_color_spaces.keys())
+        colortocalculate = [channelname for channelname in color_spaces if channelname in coloravail]
+        color_channels = []
+        if len(colortocalculate)>0:
+            for i in colortocalculate:
+                self.calculate_color_space(color_space = i, rgbchannels =rgb_channels , update_data=True)
+                color_channels += self._available_color_spaces[i]
+                
+            self._update_params()
+            
+        channel_names = channels + vitocalculate + color_channels
+        return self.summarise_into_quantiles(channel_names=channel_names, quantiles=quantiles)
+
+
+    @property
+    def _depth_dimname(self):
+        """Identifies the name of the depth dimension in the dataset, excluding common spatial dimensions."""
+        dimsnames = self.xrdata.dims.keys()
+        if len(dimsnames) == 2:
+            depthname = None
+        else:
+            depthname = [i for i in dimsnames if i not in ['x','y','longitude','latitude']][0]
+        
+        return depthname
+    
+        
+    def summarise_into_quantiles(self,channel_names: Optional[List[str]] = None, quantiles: List[float] = None):
+        """
+        Summarizes the data of specified channels into quantiles for 2D and 3D images within the dataset.
+
+        Parameters
+        ----------
+        channel_names : Optional[List[str]], optional
+            A list of channel names to summarize. If None, all channels are used, by default None.
+        quantiles : Optional[List[float]], optional
+            A list of quantiles to calculate for each channel. If None, defaults to the median (0.5), by default None.
+
+        Returns
+        -------
+        Dict[str, List[Dict[float, float]]]
+            A dictionary where keys are channel names and values are lists of dictionaries, each containing calculated quantile values.
+        """
+        if not channel_names:
+            channel_names = self._channel_names
+        
+        channel_data = {}
+        for channel_name in channel_names:
+            channel_name = self._channel_names[0] if not channel_name else channel_name
+            
+            if self._ndims == 2:
+                channel_data[channel_name] = self._2d_array_summary(
+                    self.xrdata, channel_name=channel_name, quantiles= quantiles)
+            if self._ndims == 3:
+                channel_data[channel_name] = self._3d_array_summary(
+                    self.xrdata, channel_name=channel_name, quantiles= quantiles)
+        
+        return channel_data
+    
+    def _update_params(self):
+        self._channel_names = None if not self.xrdata else list(self.xrdata.keys())
+        self._ndims = None if not self.xrdata else len(list(self.xrdata.sizes.keys()))
+        
+    
+    def _3d_array_summary(self, channel_name: str = None, quantiles: List[float] = None):
+        """
+        Summarizes 3D images into quantiles for a specific channel.
+
+        Parameters
+        ----------
+        channel_name : str
+            The name of the channel to summarize.
+        quantiles : Optional[List[float]], optional
+            The quantiles to calculate, by default None which calculates the median.
+
+        Returns
+        -------
+        List[Dict[float, float]]
+            A list of dictionaries with quantile values for each depth slice of the 3D image.
+
+        Raises
+        ------
+        ValueError
+            If the dataset's array order is not 'DCHW', indicating depth, channel, height, width.
+        """
+        if self._array_order != "DCHW":
+            raise ValueError('Currently implemented only for "DCHW" array order.')
+        
+        datasummary = []
+        for i in self.xrdata.dims[self._depth_dimname]:
+            xrdata2d = self.xrdata.isel({self._depth_dimname: 0})
+            datasummary.append(self._2d_array_summary(xrdata2d, channel_name))
+        
+        return datasummary
+        
+    
+    def _2d_array_summary(self, xrdata: xarray.Dataset, channel_name: None, quantiles: List[float] = None):
+        """
+        Summarizes 2D images into quantiles for a specific channel.
+
+        Parameters
+        ----------
+        xrdata : xarray.Dataset
+            The xarray dataset to summarize.
+        channel_name : str
+            The name of the channel to summarize.
+        quantiles : Optional[List[float]], optional
+            The quantiles to calculate, by default None which calculates the median.
+
+        Returns
+        -------
+        List[Dict[float, float]]
+            A list of dictionaries with calculated quantile values.
+
+        Raises
+        ------
+        AssertionError
+            If the specified channel name is not in the datacube's channel names.
+        """
+        if not quantiles:
+            quantiles = [0.5]
+
+        assert channel_name in self._channel_names, "Channel name must be in the datacube."
+        
+        channel_image = xrdata[channel_name].values
+        if not self._navalue:
+            channel_image[channel_image == self._navalue] = np.nan
+            
+        datasummary = calculate_quantiles(channel_image, quantiles=quantiles)
+        
+        return datasummary
+        
+
+    

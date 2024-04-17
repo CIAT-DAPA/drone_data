@@ -24,13 +24,18 @@ import affine
 from skimage.registration import phase_cross_correlation
 from sklearn.impute import KNNImputer
 
-from .image_functions import phase_convolution,register_image_shift
+from .image_functions import (
+    phase_convolution, 
+    register_image_shift,
+    resize_2dimg,
+    getcenter_from_hull,
+    border_distance_fromgrayimg, 
+    hist_3dimg)
 
-from .image_functions import getcenter_from_hull,border_distance_fromgrayimg
-from .image_functions import hist_3dimg
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 
+# TODO: move xarray functions to xr_functions
 # check it
 
 def scale_255(data):
@@ -184,9 +189,27 @@ def find_shift_between2xarray(offsetdata, refdata, band='red', clipboundaries=No
 
 
 # adapated from https://github.com/Devyanshu/image-split-with-overlap
-def start_points(size, split_size, overlap=0.0):
+def start_points(size, split_size: int, overlap:float=0.0) -> List[int]:
     """
-    this functions initalize the tile in a corner
+    Calculate start points for tiling a dimension.
+
+    Given a total size of the dimension, tile size, and overlap between tiles,
+    this function calculates and returns the start points for each tile,
+    ensuring coverage of the entire dimension.
+
+    Parameters
+    ----------
+    size : int
+        The total size of the dimension to be tiled.
+    split_size : int
+        The size of each tile.
+    overlap : float, optional
+        The fraction of overlap between consecutive tiles, by default 0.0.
+
+    Returns
+    -------
+    List[int]
+        A list of start points for each tile.
     """
     points = [0]
     stride = int(split_size * (1 - overlap))
@@ -250,7 +273,27 @@ def get_tiles(ds, nrows=None, ncols=None, width=None, height=None, overlap=0.0):
         yield window, transform
 
 
-def clip_xarraydata(xarraydata, gpdata, bands=None, buffer=None):
+def clip_xarraydata(xarraydata:xarray.Dataset, gpdata: gpd.GeoDataFrame, 
+                    bands=None, buffer=None):
+    """
+    Clip an xarray dataset based on a GeoPandas DataFrame.
+
+    Parameters:
+    -----------
+    xarraydata : xarray.Dataset
+        Xarray dataset to be clipped.
+    gpdata : geopandas.GeoDataFrame
+        GeoPandas DataFrame used for clipping.
+    bands : list, optional
+        List of bands to be clipped. Defaults to None, which clips all bands.
+    buffer : float, optional
+        Buffer distance for clipping geometry. Defaults to None.
+
+    Returns:
+    --------
+    xarray.Dataset
+        Clipped xarray dataset.
+    """
     gpdataclip = gpdata.copy()
     if buffer is not None:
         geom = gpdataclip.geometry.values.buffer(buffer, join_style=2)
@@ -369,21 +412,36 @@ def coordinates_fromtransform(transform, imgsize):
     return [cols, rows]
 
 
-def list_tif_2xarray(listraster, transform, crs, nodata=0, 
-                     bands_names=None, 
-                     dimsformat = 'CHW'):
-    """tranform a list of np arrays to a xarray
+def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine, 
+                     crs: str, nodata: int=0, 
+                     bands_names: List[str] = None,
+                     dimsformat: str = 'CHW',
+                     dimsvalues: Dict[str, np.ndarray] = None):
+    
+    """
+    Convert a list of raster images to an xarray dataset.
 
-    Args:
-        listraster (list): list of numpy arrays of 3D or 4D dimensions
-        transform (Affine): affine transformation matrix
-        crs (crs): geograhical coordinate system
-        nodata (int, optional): array value for non data. Defaults to 0.
-        bands_names (list, optional): list of string with the channels names. Defaults to None.
-        dimsformat (list, optional): multi dimensional order. Defaults to CHW.
+    Parameters:
+    -----------
+    list_raster : List[np.ndarray]
+        List of numpy arrays representing the raster images.
+    transform : Affine
+        Affine transformation information.
+    crs : str
+        Coordinate reference system.
+    nodata : int, optional
+        Value representing nodata. Defaults to 0.
+    bands_names : List[str], optional
+        List of band names. Defaults to None.
+    dims_format : str, optional
+        Format of dimensions. Defaults to 'CHW'.
+    dims_values : Dict[str, np.ndarray], optional
+        Values for the dimensions. Defaults to None.
 
     Returns:
-        xarray dataset: dataset
+    --------
+    xr.Dataset
+        Xarray dataset containing the raster images.
     """
     
     assert len(listraster)>0
@@ -421,7 +479,8 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0,
             height = listraster[0].shape[0]
             dims = ['y','x','date']
 
-    dim_names = {'dim_{}'.format(i):dims[i] for i in range(len(listraster[0].shape))}
+    dim_names = {'dim_{}'.format(i):dims[i] for i in range(
+        len(listraster[0].shape))}
     
            
     metadata = {
@@ -450,24 +509,43 @@ def list_tif_2xarray(listraster, transform, crs, nodata=0,
 
     multi_xarray = xarray.merge(riolist)
     multi_xarray.attrs = metadata
-
-    # assign coordinates
-    
-    y,x = coordinates_fromtransform(transform,
-                                     [height, width])
-    
-   
     multi_xarray = multi_xarray.rename(dim_names)
-
-    multi_xarray = multi_xarray.assign_coords(x=np.sort(np.unique(x)))
-    multi_xarray = multi_xarray.assign_coords(y=np.sort(np.unique(y)))
+    
+    # assign coordinates
+    if dimsvalues:
+        y = dimsvalues['y']
+        x = dimsvalues['x']
+        multi_xarray = multi_xarray.assign_coords(dimsvalues)
+    else:
+        y,x = coordinates_fromtransform(transform,
+                                     [height, width])
+        multi_xarray = multi_xarray.assign_coords(x=np.sort(np.unique(x)))
+        multi_xarray = multi_xarray.assign_coords(y=np.sort(np.unique(y)))
 
     return multi_xarray
 
-def crop_using_windowslice(xr_data, window, transform):
+def crop_using_windowslice(xr_data: xarray.Dataset, 
+                           window: windows.Window, transform: Affine) -> xarray.Dataset:
     """
-    mask a xrarray using a window
+    Crop an xarray dataset using a window.
+
+    Parameters:
+    -----------
+    xr_data : xr.Dataset
+        The xarray dataset to be cropped.
+    window : Window
+        The window object defining the cropping area.
+    transform : Affine
+        Affine transformation defining the spatial characteristics of the cropped area.
+
+    Returns:
+    --------
+    xr.Dataset
+        Cropped xarray dataset.
     """
+    
+    # Extract the data using the window slices
+    
     xrwindowsel = xr_data.isel(y=window.toslices()[0],
                                      x=window.toslices()[1]).copy()
 
@@ -530,18 +608,27 @@ def from_polygon_2bbox(pol):
     return [min(x_coordinates), min(y_coordinates), max(x_coordinates), max(y_coordinates)]
 
 
-def from_xyxy_2polygon(x1, y1, x2, y2):
-    """transform a coordinates to a Polygon geometry
+def from_xyxy_2polygon(x1: float, y1: float, x2: float, y2: float) -> Polygon:
+    """
+    Create a polygon from the coordinates of two opposite corners of a bounding box.
 
-    Args:
-        x1 (int): left or x mininimun coordinate
-        y1 (int): top or y min coordinate
-        x2 (int): right or x max coordinate
-        y2 (int): bottom or y max coordinate
+    Parameters:
+    -----------
+    x1 : float
+        x-coordinate of the first corner.
+    y1 : float
+        y-coordinate of the first corner.
+    x2 : float
+        x-coordinate of the second corner.
+    y2 : float
+        y-coordinate of the second corner.
 
     Returns:
-        Polygon: geometry
+    --------
+    shapely.geometry.Polygon
+        Polygon geometry created from the bounding box coordinates.
     """
+    
     xpol = [x1, x2,
             x2, x1,
             x1]
@@ -551,21 +638,61 @@ def from_xyxy_2polygon(x1, y1, x2, y2):
 
     return Polygon(list(zip(xpol, ypol)))
 
+def get_xarray_polygon(xrdata: xarray.Dataset, dim1name: str = 'x', dim2name: str = 'y'):
+    """
+    Extracts the bounding polygon from an xarray.Dataset using specified dimension names.
 
-def from_bbxarray_2polygon(bb, xarrayimg):
+    Parameters
+    ----------
+    xrdata : xarray.Dataset
+        The input xarray dataset from which to extract the polygon.
+    dim1name : str, optional
+        The name of the first dimension, typically representing the x-axis, by default 'x'.
+    dim2name : str, optional
+        The name of the second dimension, typically representing the y-axis, by default 'y'.
+
+    Returns
+    -------
+    Any
+        The polygon object representing the bounding area of the dataset. The exact type
+        depends on the implementation of `from_xyxy_2polygon`.
+
+    Raises
+    ------
+    AssertionError
+        If either `dim1name` or `dim2name` are not coordinates in `xrdata`.
+
+    Notes
+    -----
+
+    """
+    
+    assert dim1name in list(xrdata.coords.keys()), f'{dim1name} is not in the xaray dimensions'
+    assert dim2name in list(xrdata.coords.keys()), f'{dim2name} is not in the xaray dimensions'
+    
+    xcoords = xrdata.coords['x'].values
+    ycoords = xrdata.coords['y'].values
+    
+    x1, x2 = np.min(xcoords), np.max(xcoords)
+    y1, y2 = np.min(ycoords), np.max(ycoords)
+    
+    return from_xyxy_2polygon(x1, y1,
+                              x2, y2)
+
+def from_bbxarray_2polygon(bb, xrdata):
     """Create a Polygon geometry using the left, top, right and bottom coordiante values of ht eboundary box
 
     Args:
         bb (_type_): boundary box list values (left, top, right and bottom)
-        xarrayimg (xarray): xarray image attributes
+        xrdata (xarray): xarray image attributes
 
     Returns:
         Polygon: geometry
     """
     # pixel_size = imgsdata[id_img].attrs['transform'][0]
-    imgsz = xarrayimg.attrs['width']
-    xcoords = xarrayimg.coords['x'].values
-    ycoords = xarrayimg.coords['y'].values
+    imgsz = xrdata.attrs['width']
+    xcoords = xrdata.coords['x'].values
+    ycoords = xrdata.coords['y'].values
 
     bb = bb if isinstance(bb, np.ndarray) else np.array(bb)
     listcoords = []
@@ -1079,24 +1206,6 @@ def resize_4dxarray(xrdata, new_size = None, name4d = 'date', **kwargs):
 
     return imgresized
 
-def resize_2dimg(image, newx, newy, flip=True, interpolation = 'bilinear', blur= False, kernelsize = (5,5)):
-    
-    intmethod = cv2.INTER_LINEAR
-    if interpolation == 'bilinear':
-        intmethod =  cv2.INTER_LINEAR
-    if interpolation == 'bicubic':
-        intmethod =  cv2.INTER_CUBIC
-    if interpolation == 'nearest':
-        intmethod = cv2.INTER_NEAREST
-    imageres = cv2.resize(image, (newx, newy), interpolation= intmethod)
-
-    if flip:
-        imageres = Image.fromarray(imageres)
-        imageres = np.array(ImageOps.flip(imageres))
-    if blur:
-        imageres = cv2.GaussianBlur(imageres,kernelsize,0)
-
-    return imageres
 
 def resize_3dxarray(xrdata, new_size, bands = None,
                     flip=True, 

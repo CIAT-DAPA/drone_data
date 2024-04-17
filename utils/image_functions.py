@@ -12,17 +12,123 @@ from scipy.spatial import ConvexHull
 import warnings
 import cv2 as cv
 
+from typing import Tuple
+from sklearn.impute import KNNImputer
+
+
+def fill_na_values(mltimage, n_neighbors = 7):
+    impmodel = KNNImputer(n_neighbors=n_neighbors)
+    newimg = mltimage.copy()
+    for c in range(mltimage.shape[0]):
+        for t in range(mltimage.shape[1]):
+            if True in np.isnan(mltimage[c,t]):
+                newimg[c,t] = impmodel.fit_transform(mltimage[c,t])
+
+    return newimg   
+
+def resize_2dimg(image: np.ndarray, newx: int, newy: int, flip: bool = True, 
+                 interpolation: str = 'bilinear', blur: bool = False, 
+                 kernelsize: Tuple[int, int] = (5, 5)) -> np.ndarray:
+    """
+    Resizes a 2D image using specified dimensions and options for flipping and blurring.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        The input image array to be resized.
+    newx : int
+        The new width of the image.
+    newy : int
+        The new height of the image.
+    flip : bool, optional
+        A boolean flag to indicate whether the image should be flipped vertically after resizing. Default is True.
+    interpolation : str, optional
+        The method of interpolation to be used for resizing. Options are 'bilinear', 'bicubic', 'nearest'.
+        Default is 'bilinear'.
+    blur : bool, optional
+        A boolean flag to indicate whether a Gaussian blur should be applied to the resized image. Default is False.
+    kernelsize : Tuple[int, int], optional
+        The size of the kernel to be used for the Gaussian blur. Default is (5, 5).
+
+    Returns
+    -------
+    np.ndarray
+        The processed image array after resizing, optional flipping, and optional blurring.
+
+    Notes
+    -----
+    Uses OpenCV for resizing and Gaussian blur, and PIL for flipping the image if required.
+    """
+    intmethod = cv2.INTER_LINEAR
+    if interpolation == 'bilinear':
+        intmethod =  cv2.INTER_LINEAR
+    if interpolation == 'bicubic':
+        intmethod =  cv2.INTER_CUBIC
+    if interpolation == 'nearest':
+        intmethod = cv2.INTER_NEAREST
+    imageres = cv2.resize(image, (newx, newy), interpolation= intmethod)
+
+    if flip:
+        imageres = Image.fromarray(imageres)
+        imageres = np.array(ImageOps.flip(imageres))
+    if blur:
+        imageres = cv2.GaussianBlur(imageres,kernelsize,0)
+
+    return imageres
+
 ###
-def transformto_cielab(dataimg):
-    from skimage import io, color
+def transformto_cielab(dataimg: np.ndarray) -> np.ndarray:
+    """
+    Convert RGB data to CIELAB color space.
+
+    Parameters:
+    -----------
+    dataimg : np.ndarray
+        Input RGB image data.
+
+    Returns:
+    --------
+    np.ndarray
+        CIELAB color space representation of the input RGB image data.
+    """
     
-    if dataimg.shape[0] == 3:
-        dataimg = dataimg.swapaxes(0,1).swapaxes(1,2)
-        
-    lab = color.rgb2lab(dataimg)
+    from skimage import io, color
+    dataimgc = dataimg.copy()
+    if dataimgc.shape[0] == 3:
+        dataimgc = dataimgc.swapaxes(0,1).swapaxes(1,2)
+    #dataimgc = dataimgc *255. if np.max(dataimgc ) <= 1 else dataimgc.copy()
+         
+    lab = color.rgb2lab(dataimgc)
     lab[lab == 0] = np.nan
     
     return lab
+
+def transformto_hsv(dataimg: np.ndarray) -> np.ndarray:
+    """
+    Convert RGB data to HSV color space.
+
+    Parameters:
+    -----------
+    dataimg : np.ndarray
+        Input RGB image data.
+
+    Returns:
+    --------
+    np.ndarray
+        HSV color space representation of the input RGB image data.
+    """
+    
+    from skimage import io, color
+    dataimgc = dataimg.copy()
+    if dataimgc.shape[0] == 3:
+        dataimgc = dataimgc.swapaxes(0,1).swapaxes(1,2)
+    dataimgc = dataimgc.copy() if np.max(dataimgc ) <= 1 else dataimgc.copy() / 255.
+         
+    hsv = color.rgb2hsv(dataimgc)
+    hsv[hsv == 0] = np.nan
+    
+    return hsv
+
 
 # https://en.wikipedia.org/wiki/Histogram_equalization
 def hist_equalization(np2dimg):

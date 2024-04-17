@@ -5,24 +5,32 @@ import tqdm
 import pickle
 import xarray
 from shapely.geometry import Polygon
+from rasterio import windows
 
 import rasterio
 import itertools
 import pandas as pd
 import os
 
-from .gis_functions import get_tiles, resize_3dxarray
-from .gis_functions import resample_xarray
-from .gis_functions import clip_xarraydata, resample_xarray, register_xarray,find_shift_between2xarray
-from .gis_functions import list_tif_2xarray
+from .gis_functions import (get_tiles, resize_3dxarray,
+                            resample_xarray,
+                            clip_xarraydata, 
+                            resample_xarray, 
+                            register_xarray,
+                            find_shift_between2xarray,
+                            list_tif_2xarray,
+                            crop_using_windowslice)
 
-from .image_functions import radial_filter, remove_smallpixels,transformto_cielab
+from .image_functions import radial_filter, remove_smallpixels,transformto_cielab, transformto_hsv
 
 from .decorators import check_output_fn
 from .data_processing import data_standarization, minmax_scale
 import json
 
-from typing import List, Optional, Union
+
+
+
+from typing import List, Optional, Union, Dict
 
 
 ### TODO: FutureWarning: The return type of `Dataset.dims` will be changed to return a set of dimension names in future, 
@@ -38,14 +46,84 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
     
+
+def crop_xarray_using_mask(maskdata: np.ndarray,
+                           xrdata: xarray.Dataset, 
+                           min_threshold_mask : float = 0,
+                           buffer: int = None) -> xarray.Dataset:
+    """
+    Crop an xarray dataset using a mask.
+
+    Parameters:
+    -----------
+    mask_data : np.ndarray
+        Array representing the mask.
+    xr_data : xr.Dataset
+        Xarray dataset to be cropped.
+    min_threshold_mask : float, optional
+        Minimum threshold value for the mask. Defaults to 0.
+    buffer : int, optional
+        Buffer value from the mask data to the image border in pixels. Deafault None.
+    Returns:
+    --------
+    xr.Dataset
+        Cropped xarray dataset.
+    """
+    boolmask = maskdata > min_threshold_mask 
+
+    y1, y2 = np.where(boolmask)[0].min(), np.where(boolmask)[0].max()
+    x1, x2 = np.where(boolmask)[1].min(), np.where(boolmask)[1].max()
+    
+    if 'width' in list(xrdata.attrs.keys()) and 'height' in list(xrdata.attrs.keys()):
+        ncols_img, nrows_img = xrdata.attrs['width'], xrdata.attrs['height']
+    else:
+        nrows_img, ncols_img = xrdata[list(xrdata.keys())[0]].values.shape
+    
+    if buffer:
+        y1 = 0 if (y1-buffer)< 0 else y1-buffer
+        x1 = 0 if (x1-buffer)< 0 else x1-buffer
+        x2 = ncols_img if (x2+buffer)> ncols_img else x2+buffer
+        y2 = nrows_img if (y2+buffer)> nrows_img else y2+buffer
         
+      
+    big_window = windows.Window(col_off=0, row_off=0, 
+                                width=ncols_img, height=nrows_img)
+        
+    crop_window = windows.Window(col_off=x1, row_off=y1, width=abs(x2 - x1),
+                            height=abs(y2-y1)).intersection(big_window)
+    
+    assert 'transform' in list(xrdata.attrs.keys())
+    transform = windows.transform(crop_window, xrdata.attrs['transform'])
+    
+    xrfiltered = crop_using_windowslice(xrdata.copy(), crop_window, transform)
+    
+    return xrfiltered
+    
 def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
+    """
+    Convert spatial data from a custom dictionary to an xarray dataset.
+
+    Parameters:
+    -----------
+    dictdata : Dict[str, Any]
+        Custom dictionary containing spatial data.
+    dimsformat : str, optional
+        Format of dimensions in the resulting xarray dataset. Either 'DCHW' or CHW. Defaults to 'DCHW'.
+
+    Returns:
+    --------
+    xr.Dataset
+        Xarray dataset containing the converted spatial data.
+    """
+    
     import affine
         
     trdata = dictdata['attributes']['transform']
     crsdata = dictdata['attributes']['crs']
     varnames = list(dictdata['variables'].keys())
     listnpdata = get_data_from_dict(dictdata)
+    
+    # Process transform data
     if type(trdata) is str:
         trdata = trdata.replace('|','')
         trdata = trdata.replace('\n ',',')
@@ -57,28 +135,34 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
             trdata[0] = pxsize
             trdata[4] = pxsize
         
-    trd = affine.Affine(trdata[0],trdata[1],trdata[2],trdata[3],trdata[4],trdata[5])
+    trd = affine.Affine(*trdata)
 
     datar = list_tif_2xarray(listnpdata, trd,
                                 crs=crsdata,
                                 bands_names=varnames,
-                                dimsformat = dimsformat)
+                                dimsformat = dimsformat,
+                                dimsvalues = dictdata['dims'])
     
     if 'date' in list(dictdata['dims'].keys()):
         datar = datar.assign_coords(date=np.sort(
             np.unique(dictdata['dims']['date'])))
-        
+
         
     return datar
 
-def from_xarray_to_dict(xrdata):
-    """transform spatial xarray data to custom dict
+def from_xarray_to_dict(xrdata: xarray.Dataset) -> dict:
+    """
+    Transform spatial xarray data to a custom dictionary.
 
-    Args:
-        xrdata (xarray): spatial xarray
+    Parameters:
+    -----------
+    xrdata : xr.Dataset
+        Input xarray dataset to be transformed.
 
     Returns:
-        dict: qih folowing keys 'variables':chanels information, 'dims':dimensions names, and 'attributes': spatial attributes affine, crs
+    --------
+    dict
+        Custom dictionary containing variables, dimensions, and attributes of the input xarray dataset.
     """
     
     datadict = {
@@ -91,10 +175,11 @@ def from_xarray_to_dict(xrdata):
     for feature in variables:
         datadict['variables'][feature] = xrdata[feature].values
 
-    for dim in xrdata.dims.keys():
+    for dim in xrdata.sizes.keys():
         if dim == 'date':
             datadict['dims'][dim] = np.unique(xrdata[dim])
-        
+        else:
+            datadict['dims'][dim] = xrdata[dim].values
     
     for attr in xrdata.attrs.keys():
         if attr == 'transform':
@@ -105,20 +190,43 @@ def from_xarray_to_dict(xrdata):
     return datadict
 
 
-def get_data_from_dict(data, onlythesechannels = None):
-            
-        dataasarray = []
-        channelsnames = list(data['variables'].keys())
-        
-        if onlythesechannels is not None:
-            channelstouse = [i for i in onlythesechannels if i in channelsnames]
-        else:
-            channelstouse = channelsnames
-        for chan in channelstouse:
-            dataperchannel = data['variables'][chan] 
-            dataasarray.append(dataperchannel)
+def get_data_from_dict(data: Dict[str, Dict[str, np.ndarray]], 
+                       onlythesechannels: Optional[List[str]] = None) -> np.ndarray:
+    """
+    Extracts data for specified channels from a dictionary and converts it into a NumPy array.
 
-        return np.array(dataasarray)
+    Parameters
+    ----------
+    data : Dict[str, Dict[str, np.ndarray]]
+        A dictionary where the 'variables' key contains another dictionary mapping channel names to their data.
+    onlythesechannels : Optional[List[str]], optional
+        A list specifying which channels' data to extract. If None, data for all channels is extracted, by default None.
+
+    Returns
+    -------
+    np.ndarray
+        An array containing the data for the specified channels. The array's shape is (N, ...) where N is the number of channels.
+
+    Examples
+    --------
+    >>> data = {'variables': {'red': np.array([1, 2, 3]), 'green': np.array([4, 5, 6]), 'blue': np.array([7, 8, 9])}}
+    >>> get_data_from_dict(data, onlythesechannels=['red', 'blue'])
+    array([[1, 2, 3],
+        [7, 8, 9]])
+    """
+        
+    dataasarray = []
+    channelsnames = list(data['variables'].keys())
+    
+    if onlythesechannels is not None:
+        channelstouse = [i for i in onlythesechannels if i in channelsnames]
+    else:
+        channelstouse = channelsnames
+    for chan in channelstouse:
+        dataperchannel = data['variables'][chan] 
+        dataasarray.append(dataperchannel)
+
+    return np.array(dataasarray)
     
 class CustomXarray(object):
     """A custom class for handling and exporting UAV data using xarray.
@@ -176,7 +284,8 @@ class CustomXarray(object):
                                    suffix=filesuffix)
               
             if customdict:
-                self.xrdata = from_dict_toxarray(data, dimsformat = self._arrayorder)
+                self.xrdata = from_dict_toxarray(data, 
+                                                 dimsformat = self._arrayorder)
                 
             else:
                 self.xrdata = data
@@ -293,28 +402,63 @@ class CustomXarray(object):
         Returns:
             np.ndarray: Array representation of the data.
         """
-        
         data = get_data_from_dict(customdict, onlythesechannels)
         return data
         
 
 
-def add_2dlayer_toxarrayr(xarraydata, variable_name,fn = None, imageasarray = None):
+def add_2dlayer_toxarrayr(xarraydata: xarray.Dataset, variable_name: str,fn:str = None, imageasarray:np.ndarray = None) -> xarray.Dataset:
+    """
+    Add a 2D layer to an existing xarray dataset.
 
-        dimsnames = list(xarraydata.dims.keys())
-        if fn is not None:
-            with rasterio.open(fn) as src:
-                xrimg = xarray.DataArray(src.read(1))
-        elif imageasarray is not None:
-            if len(imageasarray.shape) == 3:
-                imageasarray = imageasarray[:,:,0]
+    Parameters:
+    -----------
+    xarraydata : xarray.Dataset
+        Existing xarray dataset.
+    variable_name : str
+        Name of the variable to be added.
+    fn : str, optional
+        File path of the image. Either `fn` or `image_as_array` must be provided.
+    image_as_array : np.ndarray, optional
+        Image data as a numpy array. Either `fn` or `image_as_array` must be provided.
 
-            xrimg = xarray.DataArray(imageasarray)    
+    Returns:
+    --------
+    xarray.Dataset
+        Updated xarray dataset with the added 2D layer.
+    """
+    #dimsnames = list(xarraydata.sizes.keys())
+    #sizexarray = [dict(xarraydata.sizes)[i] for i in dict(xarraydata.sizes)]
+    refdimnames = xarraydata.sizes
+    if fn is not None:
+        with rasterio.open(fn) as src:
+            xrimg = xarray.DataArray(src.read(1))
 
-        xrimg.name = variable_name
-        xrimg = xrimg.rename({'dim_0': dimsnames[0], 'dim_1': dimsnames[1]})
+    elif imageasarray is not None:
+        if len(imageasarray.shape) == 3:
+            imageasarray = imageasarray[:,:,0]
+        xrimg = xarray.DataArray(imageasarray)    
+        #y_index =[i for i in range(len(sizexarray)) if xrimg.shape[1] == sizexarray[i]][0]
+        #x_index = 0 if y_index == 1 else 1
+    newdims = {}
+    for keyval in xrimg.sizes:
+        xrimg.sizes[keyval]
+        posdims = [j for j,keyvalref in enumerate(
+            refdimnames.keys()) if xrimg.sizes[keyval] == refdimnames[keyvalref]]
+        newdims[keyval] = posdims
+    # check double same axis sizes
+    if len(newdims[list(newdims.keys())[1]]) >1:
+        newdims[list(newdims.keys())[1]] = list(refdimnames.keys())[1]
+        newdims[list(newdims.keys())[0]] = list(refdimnames.keys())[0]
+    else:
+        newdims[list(newdims.keys())[1]] = list(refdimnames.keys())[newdims[list(newdims.keys())[1]][0]]
+        newdims[list(newdims.keys())[0]] = list(refdimnames.keys())[newdims[list(newdims.keys())[0]][0]]
 
-        return xarray.merge([xarraydata, xrimg])
+    xrimg.name = variable_name
+    xrimg = xrimg.rename(newdims)
+
+    return xarray.merge([xarraydata, xrimg])
+
 
 
 def stack_as4dxarray(xarraylist, 
@@ -358,11 +502,11 @@ def stack_as4dxarray(xarraylist,
     if type(xarraylist) is not list:
         raise ValueError('Only list xarray are allowed')
 
-    ydim = [i for i in list(xarraylist[0].dims.keys()) if lat_dimname in i][0]
-    xdim = [i for i in list(xarraylist[0].dims.keys()) if long_dimname in i][0]
+    ydim = [i for i in list(xarraylist[0].sizes.keys()) if lat_dimname in i][0]
+    xdim = [i for i in list(xarraylist[0].sizes.keys()) if long_dimname in i][0]
 
-    coordsvals = [[xarraylist[i].dims[xdim],
-                   xarraylist[i].dims[ydim]] for i in range(len(xarraylist))]
+    coordsvals = [[xarraylist[i].sizes[xdim],
+                   xarraylist[i].sizes[ydim]] for i in range(len(xarraylist))]
 
     if resize:
         if sizemethod == 'max':
@@ -423,7 +567,7 @@ def adding_newxarray(xarray_ref,
         valuesaxis_names = [i for i in range(len(new_xarray))]
     
     # find axis position
-    dimpos = [i for i,dim in enumerate(xarray_ref.dims.keys()) if dim == axis_name][0]
+    dimpos = [i for i,dim in enumerate(xarray_ref.sizes.keys()) if dim == axis_name][0]
 
     # transform each multiband xarray to a standar dims size
     singlexarrayref = xarray_ref.isel({axis_name:0})
@@ -460,7 +604,7 @@ def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees'
     
     terrainattrslist = []
     #name4d = list(xrdata.dims.keys())[0]
-    if len(xr_data.dims.keys())>2:
+    if len(xr_data.sizes.keys())>2:
         for dateoi in range(len(xr_data[name4d])):
             datadem = xr_data[dem_varname].isel({name4d:dateoi}).copy()
             datadem = rd.rdarray(datadem, no_data=0)
@@ -468,7 +612,7 @@ def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees'
             terrainattrslist.append(terrvalues)
                     
         xrimg = xarray.DataArray(terrainattrslist)
-        vars = list(xr_data.dims.keys())
+        vars = list(xr_data.sizes.keys())
         
         vars = [vars[i] for i in range(len(vars)) if i != vars.index(name4d)]
 
@@ -481,7 +625,7 @@ def calculate_terrain_layers(xr_data, dem_varname = 'z',attrib = 'slope_degrees'
         datadem = rd.rdarray(datadem, no_data=0)
         terrvalues = rd.TerrainAttribute(datadem,attrib= attrib)
 
-        vars = list(xr_data.dims.keys())
+        vars = list(xr_data.sizes.keys())
         xrimg.name = attrib
         xrimg = xrimg.rename({'dim_0': vars[0], 
                             'dim_1': vars[1]})
@@ -552,11 +696,11 @@ def get_xyshapes_from_picklelistxarray(fns_list,
         with open(fns_list[idpol],"rb") as fn:
             xrdata = pickle.load(fn)
             
-        if len(xrdata.dims.keys())>2:
+        if len(xrdata.sizes.keys())>2:
             if dateref is not None:
                 xrdata = xrdata.isel({name4d:dateref})
-        xshapes.append(xrdata.dims[list(xrdata.dims.keys())[1]])
-        yshapes.append(xrdata.dims[list(xrdata.dims.keys())[0]])
+        xshapes.append(xrdata.sizes[list(xrdata.sizes.keys())[1]])
+        yshapes.append(xrdata.sizes[list(xrdata.sizes.keys())[0]])
 
     return xshapes, yshapes
 
@@ -593,7 +737,7 @@ def get_minmax_from_picklelistxarray(fns_list,
         with open(fns_list[idpol],"rb") as fn:
             xrdata = pickle.load(fn)
             
-        if len(xrdata.dims.keys())>2:
+        if len(xrdata.sizes.keys())>2:
             if dateref is not None:
                 xrdata = xrdata.isel({name4d:dateref})
         for varname in list(bands):
@@ -607,26 +751,54 @@ def get_minmax_from_picklelistxarray(fns_list,
 
     return min_dict, max_dict
 
-def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 'standarization'):
+def transform_listarrays(values: List[np.ndarray], 
+                         var_channels: Optional[List[int]] = None, 
+                         scaler: Dict[str, List[float]] = None, 
+                         scale_type: str = 'standardization') -> Dict[str, np.ndarray]:
+    """
+    Applies scaling to a list of numpy arrays based on the specified scaling type.
     
-    if varchanels is None:
-        varchanels = list(range(len(values)))
-    if scalertype == 'standarization':
+    Parameters
+    ----------
+    values : List[np.ndarray]
+        A list of numpy arrays to be scaled.
+    var_channels : Optional[List[int]], optional
+        A list of channel indices to be scaled. If None, all channels are scaled, by default None.
+    scaler : Optional[Dict[int, List[float]]], optional
+        A dictionary with pre-computed scaling parameters for each channel. 
+        If None, the scaler is computed based on `scale_type`, by default None.
+    scale_type : str, optional
+        The type of scaling to apply. Options are 'standardization' and 'normalization', 
+        by default 'standardization'.
+    
+    Returns
+    -------
+    List[np.ndarray]
+        The list of scaled numpy arrays.
+    
+    Raises
+    ------
+    ValueError
+        If an unsupported `scale_type` is provided.
+    """
+    if var_channels is None:
+        var_channels = list(range(len(values)))
+    if scale_type == 'standardization':
         if scaler is None:
             scaler = {chan:[np.nanmean(values[i]),
-                            np.nanstd(values[i])] for i, chan in enumerate(varchanels)}
+                            np.nanstd(values[i])] for i, chan in enumerate(var_channels)}
         fun = data_standarization
-    elif scalertype == 'normalization':
+    elif scale_type == 'normalization':
         if scaler is None:
             scaler = {chan:[np.nanmin(values[i]),
-                            np.nanmax(values[i])] for i, chan in enumerate(varchanels)}
+                            np.nanmax(values[i])] for i, chan in enumerate(var_channels)}
         fun = minmax_scale
     
     else:
-        raise ValueError('{} is not an available option')
+        raise ValueError(f'{scale_type} is not an available option')
     
     valueschan = {}
-    for i, channel in enumerate(varchanels):
+    for i, channel in enumerate(var_channels):
         if channel in list(scaler.keys()):
             val1, val2 = scaler[channel]
             #msk0 = values[i] == 0
@@ -636,7 +808,8 @@ def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 
     
     return valueschan    
 
-def customdict_transformation(customdict, scaler, scalertype = 'standarization'):
+def customdict_transformation(customdict, scaler:Dict[str, List[float]] = None, 
+                              scalertype: str = 'standarization'):
     """scale customdict
 
     Args:
@@ -651,12 +824,12 @@ def customdict_transformation(customdict, scaler, scalertype = 'standarization')
     ccdict = customdict.copy()
     varchanels = list(ccdict['variables'].keys())
     values =[ccdict['variables'][i] for i in varchanels]
-    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    trvalues = transform_listarrays(values, var_channels = varchanels, scaler = scaler, scale_type =scalertype)
     for chan in list(trvalues.keys()):
         ccdict['variables'][chan] = trvalues[chan]
     
 
-def xr_data_transformation(xrdata, scaler = None, scalertype = 'standarization'):
+def xr_data_transformation(xrdata, scaler: Dict[str, List[float]] = None, scalertype:str = 'standarization'):
     """scale xrarrays
 
     Args:
@@ -671,7 +844,7 @@ def xr_data_transformation(xrdata, scaler = None, scalertype = 'standarization')
     ccxr = xrdata.copy()
     varchanels = list(ccxr.keys())
     values =[ccxr[i].to_numpy() for i in varchanels]
-    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    trvalues = transform_listarrays(values, var_channels = varchanels, scaler = scaler, scale_type =scalertype)
     for chan in list(trvalues.keys()):
         ccxr[chan].values = trvalues[chan]
     
@@ -732,8 +905,8 @@ def get_minmax_fromlistxarray(xrdatalist, name4d = 'date'):
         for varname in list(xrdatalist[idpol].keys()):
             minval = min_dict[varname]
             maxval = max_dict[varname]
-            if len(xrdatalist[idpol].dims.keys())>2:      
-                for i in range(xrdatalist[idpol].dims[name4d]):
+            if len(xrdatalist[idpol].sizes.keys())>2:      
+                for i in range(xrdatalist[idpol].sizes[name4d]):
                     refvalue = xrdatalist[idpol][varname].isel({name4d:i}).values
                     if minval>np.nanmin(refvalue):
                         min_dict[varname] = np.nanmin(refvalue)
@@ -869,21 +1042,31 @@ def filter_3Dxarray_contourarea(xrdata,
     return mltxarray
 
 
-def calculate_lab_from_xarray(xrdata, rgbchannels = ['red_ms','green_ms','blue_ms'], dataformat = "CDHW", deepthdimname = 'date'):
-    """ function to convert RGB data into Lab space color 
+def calculate_lab_from_xarray(xrdata: xarray.Dataset, 
+                              rgbchannels: List[str] = ['red_ms','green_ms','blue_ms'], 
+                              dataformat: str = "CDHW", 
+                              deepthdimname: str = 'date') -> xarray.Dataset:
+    """ 
+    Converts RGB data into Lab color space. For more explanation please click on the following link:
     https://scikit-image.org/docs/stable/api/skimage.color.html#skimage.color.rgb2lab
 
-    Args:
-        xrdata (_type_): xarray data
-        rgbchannels (list, optional): rgb channels names. Defaults to ['red_ms','green_ms','blue_ms'].
-        dataformat (str, optional): what is data xarray format. Defaults to "CDHW".
-        deepthdimname (str, optional): if the xarray has three dimensions, the name of the the depth dimension. Defaults to 'date'.
+    Parameters:
+    -----------
+        xrdata : xarray.Dataset
+            Input RGB data.
+        rgbchannels : List[str], optional
+            List of channel names representing RGB. Defaults to ['red_ms','green_ms','blue_ms'].
+        dataformat : str, optional
+            Format of the data. Defaults to "CDHW".
+        deepthdimname : str, optional
+            Name of the depth dimension. Defaults to 'date'.
 
     Returns:
-        xarray that include three new channels. L: light A: color from red to green  B: color from yellow to blue
+        xarray.Dataset: Dataset containing Lab color space data.
     """
+    srgb_gamma = {"A": 0.055, "PHI": 12.92, "K0": 0.04045, "GAMMA": 2.4}
     
-    refdims = list(xrdata.dims.keys())
+    refdims = list(xrdata.sizes.keys())
     
     if len(refdims) == 3:
         dpos = dataformat.index('D')
@@ -903,20 +1086,173 @@ def calculate_lab_from_xarray(xrdata, rgbchannels = ['red_ms','green_ms','blue_m
                      resize = False)
 
     else:
-        imgtotr = xrdata[rgbchannels].to_array().values
+        imgtotr = xrdata[rgbchannels].to_array().values.copy()
+        # transform to standard rgb https://en.wikipedia.org/wiki/SRGB.
+        # taken from https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/image/color_space/srgb.py#L41-L75
+        srgb = np.where(imgtotr <= srgb_gamma['K0'] / srgb_gamma['PHI'], 
+                        imgtotr * srgb_gamma['PHI'], 
+                        (1 + srgb_gamma['A']) * (imgtotr**(1 / srgb_gamma['GAMMA'])) - srgb_gamma['A'])
+
+        imglab = transformto_cielab(srgb)
         
-        imglab = transformto_cielab(imgtotr)
-        xrdate = [xrdata]
+        xrdate = xrdata.copy()
+        
         for labindex, labename in enumerate(['l','a','b']):
             arrimg = imglab[:,:,labindex]
             arrimg[np.isnan(arrimg)] = 0
-            xrimg = xarray.DataArray(arrimg)
-            prevdimnames = list(xrimg.dims)
-            refdimnames = list(xrdata.dims.keys())
-            xrimg.name = labename
-            xrimg = xrimg.rename({dname:refdimnames[i] for i,dname in enumerate(prevdimnames)})
-            xrdate.append(xrimg)
-        xrdate = xarray.merge(xrdate)
+            
+            xrdate = add_2dlayer_toxarrayr(xrdate,variable_name=labename,
+                                           imageasarray=arrimg)
             
     return xrdate
+            
+    return xrdate
+
+
+def calculate_hsv_from_xarray(xrdata: xarray.Dataset, 
+                              rgbchannels: List[str] = ['red_ms','green_ms','blue_ms'], 
+                              dataformat: str = "CDHW", 
+                              deepthdimname: str = 'date') -> xarray.Dataset:
+    """ 
+    Converts RGB data into HSV color space.
+
+    Parameters:
+    -----------
+        xrdata : xarray.Dataset
+            Input RGB data.
+        rgbchannels : List[str], optional
+            List of channel names representing RGB. Defaults to ['red_ms','green_ms','blue_ms'].
+        dataformat : str, optional
+            Format of the data. Defaults to "CDHW".
+        deepthdimname : str, optional
+            Name of the depth dimension. Defaults to 'date'.
+
+    Returns:
+        xarray.Dataset: Dataset containing HSV color space data.
+    """
+
+    refdims = list(xrdata.sizes.keys())
     
+    if len(refdims) == 3:
+        dpos = dataformat.index('D')
+        dpos = dpos if dpos == 0 else dpos - 1
+        ndepth = len(xrdata[deepthdimname].values)
+        xrdate = []
+        for i in range(ndepth):
+            
+            xrdatad = xrdata.isel({deepthdimname:i})
+            xrdepthlist = calculate_hsv_from_xarray(xrdatad)
+            xrdate.append(xrdepthlist)
+        
+        xrdate = stack_as4dxarray(xrdate, 
+                     axis_name = deepthdimname, 
+                     new_dimpos = dpos,
+                     valuesaxis_names = xrdata.date.values,
+                     resize = False)
+
+    else:
+        imgtotr = xrdata[rgbchannels].to_array().values.copy()
+
+        imglab = transformto_hsv(imgtotr)
+        xrdate = xrdata.copy()
+        
+        for labindex, labename in enumerate(['h','s','v']):
+            arrimg = imglab[:,:,labindex]
+            arrimg[np.isnan(arrimg)] = 0
+            
+            xrdate = add_2dlayer_toxarrayr(xrdate,variable_name=labename,
+                                           imageasarray=arrimg)
+            
+    return xrdate
+
+class XRColorSpace(object):
+    """
+    A class for converting RGB data within an xarray.Dataset to specified color space values (CIE LAB or HSV).
+
+    Parameters
+    ----------
+    color_space : str, optional
+        The target color space for conversion. Supported values are "cielab" and "hsv". Defaults to "cielab".
+    
+    Attributes
+    ----------
+    rgb_channels : List[str]
+        The RGB channels to be used for color space conversion.
+    xrdata : xarray.Dataset
+        The dataset to be transformed.
+    color_space : str
+        The target color space for the conversion.
+    _fun : Callable
+        The function to be used for the conversion based on the specified color space.
+    
+    Raises
+    ------
+    ValueError
+        If an unsupported color space is specified.
+
+    Methods
+    -------
+    transform(update_data=True)
+        Applies the color space transformation to the dataset and optionally updates the dataset.
+    """
+    
+    def __init__(self,
+                 color_space: str = "cielab") -> None:
+
+        self.color_space = color_space.lower()
+        
+        if self.color_space == "cielab":
+            self._fun = self._calculate_cielab
+        elif self.color_space == "hsv":
+            self._fun = self._calculate_hsv
+        else:
+            raise ValueError("Currently, only ['cielab', 'hsv'] are available.")
+
+
+    def _calculate_hsv(self, update_data = False, **kwargs):
+        """
+        Calculates the HSV (Hue, Saturation Value) color space values from RGB channels of an xarray dataset.
+        """
+        xrdatac = self.xrdata.copy()
+        xrdatac = calculate_hsv_from_xarray(xrdatac, dataformat=self._array_order, rgbchannels = self.rgb_channels, **kwargs)
+
+        return xrdatac
+        
+    
+    def _calculate_cielab(self, update_data = False, **kwargs):
+
+        """
+        Calculates the CIE LAB color space values from RGB channels of an xarray dataset.
+        """
+        xrdatac = self.xrdata.copy()
+        xrdatac = calculate_lab_from_xarray(xrdatac, dataformat=self._array_order, rgbchannels = self.rgb_channels, **kwargs)
+                    
+            
+        return xrdatac
+    
+    def transform(self, xrdata: xarray.Dataset, rgb_channels: List[str], array_order: str = "CHW") -> xarray.Dataset:
+        """
+        Applies the specified color space transformation to the dataset.
+
+        Parameters
+        ----------
+        xrdata : xarray.Dataset
+            The xarray dataset that contains the RGB channels.
+        rgb_channels : List[str]
+            List of channel names representing RGB, e.g., ['red', 'green', 'blue'].
+        array_order : str, optional
+            The order of array dimensions. Defaults to "CHW".
+
+        update_data : bool, optional
+            If True, updates the `xrdata` attribute with the transformed dataset. Defaults to True.
+
+        Returns
+        -------
+        Any
+            The transformed xarray dataset.
+        """
+        self.xrdata = xrdata
+        self.rgb_channels = rgb_channels
+        self._array_order = array_order
+
+        return self._fun()

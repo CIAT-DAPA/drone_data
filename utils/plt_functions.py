@@ -2,10 +2,10 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
-
+import xarray
 import math
 
-from typing import List
+from typing import List, Tuple, Optional, Dict
 
 def scaleminmax(values):
     return ((values - np.nanmin(values)) /
@@ -29,13 +29,24 @@ def plot_categoricalraster(data, colormap='gist_rainbow', nodata=np.nan, fig_wid
     ax.set_axis_off()
     plt.show()
 
-def plot_multibands_fromxarray(xarradata, bands, figsize = (12,8), xinverse = True):
+def plot_multibands_fromxarray(xarradata: xarray.Dataset, bands: list, 
+                               figsize: tuple = (12,8), xinverse: bool = True, 
+                               aspng_path: str = None):
     """
-    This function will plot an xarray data in RGB format
+    Plot multiple bands from an xarray dataset in RGB format.
 
     Parameters:
-    ----------
+    -----------
+    xarradata : xarray.Dataset
+        Input xarray dataset.
+    bands : list
+        List of band names to be plotted.
+    figsize : tuple, optional
+        Figure size. Default is (12,8).
+    xinverse : bool, optional
+        Whether to invert the x-axis. Default is True.
     """
+    
     threebanddata = []
     for i in bands:
         banddata = xarradata[i].data
@@ -54,7 +65,12 @@ def plot_multibands_fromxarray(xarradata, bands, figsize = (12,8), xinverse = Tr
         ax.invert_xaxis()
         
     ax.set_axis_off()
-    plt.show()
+    if aspng_path is not None:
+        fig.savefig(aspng_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+    else:
+        plt.show()
+    
 
 
 
@@ -181,32 +197,32 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
                      **kwargs):
     
     """
-    create a figure showing multiple xarray variables
-    ----------
-    xrdata : Xarray data
+    Plot multiple bands (channels) from an xarray dataset.
+
+    Parameters:
+    -----------
+    xrdata : xr.Dataset
+        Input xarray dataset containing multiple bands.
     num_rows : int, optional
-        set number of rows
+        Number of rows in the plot grid. Defaults to 1.
     num_columns : int, optional
-        set number of rows
-    chanels_names : list of string, optional
-        a list that has the variables names to be plot.    
-    figsize : tuple, optional
-        A tuple (width, height) of the figure in inches. 
+        Number of columns in the plot grid. Defaults to 1.
+    channels_names : list, optional
+        Names of the channels to plot. Defaults to None (all channels).
+    figsize : list, optional
+        Figure size. Defaults to [10, 10].
     cmap : str, optional
-        a matplotlib colormap name.
-    fontsize : int, optional
-        a number for setting legend title size.
-    legfontsize : int, optional
-        a number for setting legend title size.
-    legtickssize : int, optional
-        a number for setting legend ticks size.
-    colorbar: float, optional
-        if the plot will include a colorbar legend
-    minmaxscale = float, optional
-        if the array will be scaled using a min max scaler
-    Returns
-    -------
-    """    
+        Colormap for the plot. Defaults to 'viridis'.
+    min_max_scale : bool, optional
+        If True, min-max scale the data before plotting. Defaults to True.
+    **kwargs : dict
+        Additional keyword arguments to be passed to plot_multichannels function.
+
+    Returns:
+    --------
+    plt.Figure
+        Matplotlib figure object containing the plotted bands.
+    """
 
     xrdatac = xrdata.copy()
     if chanels_names is not None:
@@ -227,46 +243,65 @@ def plot_multibands(xrdata, num_rows = 1, num_columns = 1,
 
 import matplotlib.pyplot as plt
 
-def plot_multichanels(data, num_rows = 2, 
-                     num_columns = 2, figsize = [10,10],
-                     label_name = None,
-                     chanels_names = None, 
-                     cmap = 'viridis', 
-                     fontsize=12, 
-                     legfontsize = 15,
-                     legtickssize = 15,
-                     colorbar = True, vmin = None, vmax = None,
-                     newlegendticks = None,
-                     fontname = "Arial",
-                     invertaxis = True):
+def plot_multichanels(data: np.ndarray, 
+                       num_rows: int = 2, 
+                       num_columns: int = 2, 
+                       figsize: Tuple[int, int] = (10, 10),
+                       label_name: Optional[str] = None,
+                       chanels_names: Optional[List[str]] = None, 
+                       cmap: str = 'viridis', 
+                       fontsize: int = 12, 
+                       legfontsize: int = 15,
+                       legtickssize: int = 15,
+                       colorbar: bool = True, 
+                       vmin: Optional[float] = None, 
+                       vmax: Optional[float] = None,
+                       newlegendticks: Optional[List[str]] = None,
+                       fontname: str = "Arial",
+                       invertaxis: bool = True) -> Tuple[plt.Figure, np.ndarray]:
     """
-    create a figure showing one channel or multiple channels
+    Creates a figure showing one or multiple channels of data with extensive customization options.
+
+    Parameters
     ----------
-    data : Numpy array
+    data : np.ndarray
+        Numpy array containing the data to be plotted.
     num_rows : int, optional
-        set number of rows
+        Number of rows in the subplot grid, by default 2.
     num_columns : int, optional
-        set number of rows
-    figsize : tuple, optional
-        A tuple (width, height) of the figure in inches. 
-    label_name : str, optional
-        an string value for the colorbar legend.
-    chanels_names : list of string, optional
-        a list with the labels for each plot.
+        Number of columns in the subplot grid, by default 2.
+    figsize : Tuple[int, int], optional
+        Figure size in inches (width, height), by default (10, 10).
+    label_name : Optional[str], optional
+        Label for the colorbar legend, by default None.
+    channel_names : Optional[List[str]], optional
+        Labels for each plot, by default None.
     cmap : str, optional
-        a matplotlib colormap name.
+        Matplotlib colormap name, by default 'viridis'.
     fontsize : int, optional
-        a number for setting legend title size.
+        Font size for the main figure, by default 12.
     legfontsize : int, optional
-        a number for setting legend title size.
+        Font size for the legend title, by default 15.
     legtickssize : int, optional
-        a number for setting legend ticks size.
-    colorbar: float, optional
-        if the plot will include a colorbar legend
+        Font size for the legend ticks, by default 15.
+    colorbar : bool, optional
+        If True, includes a colorbar legend, by default True.
+    vmin : Optional[float], optional
+        Minimum data value for colormap scaling, by default None.
+    vmax : Optional[float], optional
+        Maximum data value for colormap scaling, by default None.
+    newlegendticks : Optional[List[str]], optional
+        Custom legend ticks, by default None.
+    fontname : str, optional
+        Font name for the plot text, by default "Arial".
+    invertaxis : bool, optional
+        If True, inverts the x-axis, by default True.
 
     Returns
     -------
-    """     
+    Tuple[plt.Figure, np.ndarray]
+        The created figure and array of axes.
+    """ 
                 
     import matplotlib as mpl
     if chanels_names is None:
@@ -277,28 +312,17 @@ def plot_multichanels(data, num_rows = 2,
     count = 0
     vars = chanels_names
     cmaptxt = plt.get_cmap(cmap)
-    if vmin is None:
-        vmin = np.nanmin(data)
-    if vmax is None:
-        vmax = np.nanmax(data)
-    
-    fontmainfigure = {'family': fontname,
-        'color':  'black',
-        'weight': 'normal',
-        'size': fontsize,
-        }
+    vmin = np.nanmin(data) if vmin is None else vmin
+    vmax = np.nanmax(data) if vmax is None else vmax
+            
+    fontmainfigure = {'family': fontname, 'color': 'black', 
+                      'weight': 'normal', 'size': fontsize }
 
-    fontlegtick = {'family': fontname,
-        'color':  'black',
-        'weight': 'normal',
-        'size': legtickssize,
-        }
+    fontlegtick = {'family': fontname, 'color': 'black', 
+                   'weight': 'normal', 'size': legtickssize}
     
-    fontlegtitle = {'family': fontname,
-        'color':  'black',
-        'weight': 'normal',
-        'size': legfontsize,
-        }
+    fontlegtitle = {'family': fontname, 'color':  'black', 
+                    'weight': 'normal', 'size': legfontsize}
     
     for j in range(num_rows):
         for i in range(num_columns):
@@ -343,7 +367,6 @@ def plot_multichanels(data, num_rows = 2,
                 cb.ax.text(vmax, (7.2 * j + 2) / (vmax+3), lab,
                            ha='left', va='center',fontdict=fontlegtick)
 
-            
     return fig,ax
 
 

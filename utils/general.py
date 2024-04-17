@@ -1,6 +1,7 @@
 import math
 import pandas as pd
 import numpy as np
+import os
 
 MSVEGETATION_INDEX = {# rgb bands
 'grvi': '(green_ms - red_ms)/((green_ms + red_ms) + 0.00001)',
@@ -89,3 +90,22 @@ def calculate_fd(pddata, xvalues):
     #fddf = pd.concat([i for i in fd], axis = 1)pd.concat([pd.DataFrame(list(i)).T for i in fd], axis = 1)
     return pd.concat([pd.DataFrame(list(i)).T for i in fd], axis = 0).reset_index().drop(['index'], axis = 1)
 
+
+def split_filename(filename):
+    """fal to know if the given filenmae is it a filename or it also includes the path
+
+    Args:
+        filename (str): file name
+
+    Returns:
+        self._tmppath: if the given name includes the directory path then it will save the path in a different variable
+        
+    """
+    dirname = os.path.dirname(filename)
+    if dirname != '':
+        tmppath = dirname
+        fn = os.path.basename(filename)
+    else:
+        tmppath = None
+        
+    return tmppath, fn
