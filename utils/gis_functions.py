@@ -230,14 +230,30 @@ def start_points(size, split_size: int, overlap:float=0.0) -> List[int]:
 
 def get_windows_from_polygon(ds, polygon):
     """
+    Generates a window or list of windows from the given dataset and a polygon by computing the bounding box 
+    of the polygon and using it to create corresponding raster windows.
 
-    :param ds: raster metadata
-    :param polygon: feature geometry
-    
+    Parameters
+    ----------
+    ds : dict
+        A dictionary containing raster metadata, which must include a 'transform' key.
+    polygon : Any
+        A geometry object representing a polygon, from which the bounding box is derived.
+
+    Returns
+    -------
+    List[rasterio.windows.Window]
+        A list of rasterio window objects that define the portion of the dataset covered by the polygon.
+
+    Notes
+    -----
+    The function assumes that the polygon coordinates and the dataset's coordinate system are compatible.
     """
 
     bbox = from_polygon_2bbox(polygon)
-    window_ref = windows.from_bounds(*bbox,ds['transform'])
+    #width, height = (bbox[0] - bbox[2]), (bbox[1] - bbox[3])
+    #xy_fromtransform(ds['transform'])
+    window_ref = windows.from_bounds(left=bbox[0],bottom=bbox[3],right=bbox[2], top=bbox[1],transform=ds['transform'])
     transform = windows.transform(window_ref, ds['transform'])
 
     return [window_ref, transform]
@@ -299,25 +315,32 @@ def clip_xarraydata(xarraydata:xarray.Dataset, gpdata: gpd.GeoDataFrame,
         geom = gpdataclip.geometry.values.buffer(buffer, join_style=2)
     else:
         geom = gpdataclip.geometry.values
+    
+    polgeom = geom[0] if isinstance(geom[0],Polygon) else geom
+    
+    window, dsttransform = get_windows_from_polygon(xarraydata.attrs,
+                                                    polgeom)
+    clippedmerged = crop_using_windowslice(xarraydata, 
+                                         window, dsttransform)
 
-    listclipped = []
-    if bands is None:
-        bands = list(xarraydata.keys())
+    #listclipped = []
+    #if bands is None:
+    #    bands = list(xarraydata.keys())
 
-    for band in bands:
-        xrtoclip = xarraydata[band].copy()
-        xrtoclip = xrtoclip.rio.set_crs(xarraydata.attrs['crs'])
-        listclipped.append(xrtoclip.rio.clip(geom, gpdataclip.crs))
-        clippedmerged = xarray.merge(listclipped)
-
-    clippedmerged.attrs = xarraydata.attrs
-    clippedmerged.attrs['nodata'] = xarraydata.attrs['nodata']
-    tr = transform_fromxy(clippedmerged.x.values, clippedmerged.y.values,
-                          np.abs(xarraydata.attrs['transform'][0]))
-    clippedmerged.attrs['transform'] = tr[0]
-    clippedmerged.attrs['crs'] = xarraydata.attrs['crs']
-    clippedmerged.attrs['width'] = clippedmerged[list(clippedmerged.keys())[0]].shape[1]
-    clippedmerged.attrs['height'] = clippedmerged[list(clippedmerged.keys())[0]].shape[0]
+    #for band in bands:
+    #    xrtoclip = xarraydata[band].copy()
+    #    xrtoclip = xrtoclip.rio.set_crs(xarraydata.attrs['crs'])
+    #    listclipped.append(xrtoclip.rio.clip(geom, gpdataclip.crs))
+        
+    #clippedmerged = xarray.merge(listclipped)
+    #clippedmerged.attrs = xarraydata.attrs
+    #clippedmerged.attrs['nodata'] = xarraydata.attrs['nodata']
+    #tr = transform_fromxy(clippedmerged.x.values, clippedmerged.y.values,
+    #                      np.abs(xarraydata.attrs['transform'][0]))
+    #clippedmerged.attrs['transform'] = tr[0]
+    #clippedmerged.attrs['crs'] = xarraydata.attrs['crs']
+    #clippedmerged.attrs['width'] = clippedmerged[list(clippedmerged.keys())[0]].shape[1]
+    #clippedmerged.attrs['height'] = clippedmerged[list(clippedmerged.keys())[0]].shape[0]
 
     return clippedmerged
 

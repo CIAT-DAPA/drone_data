@@ -4,6 +4,7 @@ import geopandas as gpd
 import numpy as np
 import os
 import xarray
+import time
 
 from .xr_functions import (
     CustomXarray, 
@@ -392,7 +393,8 @@ class DataCubeProcessing(DataCubeMetrics):
         
     def _clip_cubedata_image(self, min_area:float =None, 
                              buffer: float = None, 
-                             update_data: bool = True):
+                             update_data: bool = True,
+                             report_times: bool = False):
         """
         Clips the dataset based on a minimum area or buffer distance. If `update_data` is True,
         the internal dataset is updated with the clipped version.
@@ -419,6 +421,7 @@ class DataCubeProcessing(DataCubeMetrics):
         """
         
         # using area or buffer
+        start0 = time.time()
         if min_area is not None:
             
             datacubepolygon = get_xarray_polygon(self.xrdata)
@@ -430,17 +433,23 @@ class DataCubeProcessing(DataCubeMetrics):
             buffergeom = estimate_pol_buffer([xmin,xmax],[ymin,ymax],min_area)
             buffer = buffergeom/2
             
-            
         elif buffer is None:
             raise ValueError("Please provide either min_area or buffer.")
-        
-        datageom = gpd.GeoDataFrame(geometry=[datacubepolygon])
+        end0 = time.time()
+        start1 = time.time()
+        datageom = gpd.GeoDataFrame(geometry=[datacubepolygon], crs = self.xrdata.attrs['crs'])
         
         clippedxrdata  =clip_xarraydata(self.xrdata.copy(), 
                                     datageom.loc[:,'geometry'], 
                                     buffer = buffer)
+        end1 = time.time()
         if update_data:
             self.xrdata = clippedxrdata
+        if report_times:
+            print('finding buffer in clip function {:.4f}'.format(end0 - start0))
+            print('clip xarray in clip function {:.4f}'.format(end1 - start1))
+            
+            
             
         return clippedxrdata
 
@@ -694,7 +703,8 @@ class MultiDDataTransformer(DataCubeProcessing):
                               rgb_for_color_space: List[str] = ['red', 'green', 'ms'],
                               rgb_for_illumination: List[str] = ['red', 'green', 'ms'],
                               new_size: Optional[int] = None, 
-                              scale_rgb: bool = True) -> np.ndarray:
+                              scale_rgb: bool = True,
+                              report_times: bool = False ) -> np.ndarray:
         """
         Processes the imagery data by applying transformations and returning the modified image data.
 
@@ -722,31 +732,50 @@ class MultiDDataTransformer(DataCubeProcessing):
         """
         
         # clip datacube
-        self.clip_datacube(min_area=min_area, image_reduction = image_reduction)
+        start0 = time.time()
+        self.clip_datacube(min_area=min_area, image_reduction = image_reduction, report_times=report_times)
+        end0 = time.time()
         # create new features in t given case that there are channels that are not in the datacube
+        start1 = time.time()
         self.create_new_features(rgb_for_color_space = rgb_for_color_space)
+        end1 = time.time()
         # get the array data
+        start2 = time.time()
         mltdata = self.to_4darray(new_size)
+        end2 = time.time()
         # data augmentation
+        start3 = time.time()
         if augmentation is None or augmentation not in self.transformations:
             trfunction = np.random.choice(self.transformations) if self.transformations is not None else 'raw'
         else:
             trfunction = augmentation
         #print(mltdata.shape, trfunction)
         mltdata = self.tranform_mlt_data(mltdata, transformation=trfunction, rgb_channels=rgb_for_illumination)
+        end3 = time.time()
         # data standarization
         rgbchannelsonimage = [i for i in ['red','green','blue'] if i in self.channels]
+        start4 = time.time()
         if scale_rgb and len(rgbchannelsonimage)>0:
             imgrgb = getting_only_rgb_channels(mltdata,self.channels,rgbchannelsonimage)
             imgrgb = imgrgb / 255. if np.max(imgrgb)>1 else imgrgb
             mltdata = insert_rgb_to_matrix(mltdata, imgrgb, self.channels, rgb_channels=rgbchannelsonimage)
-            
+        end4 = time.time()
+        start5 = time.time()
         if self.scaler is not None:
             mltdata = self.scale_mlt_data(mltdata)
-            
+        end5 = time.time()
+        if report_times:
+            print('clip time {:.3f}'.format(end0 - start0))
+            print('new features time {:.3f}'.format(end1 - start1))
+            print('to 4array time {:.3f}'.format(end2 - start2))
+            print('augmentation time {:.3f}'.format(end3 - start3))
+            print('rgb transform time {:.3f}'.format(end4 - start4))
+            print('scaling time {:.3f}'.format(end5 - start5))
+        
         return mltdata
     
-    def clip_datacube(self, min_area: Optional[float] = None, image_reduction: Optional[float] = None) -> None:
+    def clip_datacube(self, min_area: Optional[float] = None, image_reduction: Optional[float] = None,
+                      report_times: bool = False) -> None:
         """
         Clips the data cube based on a minimum area threshold or an image reduction factor.
 
@@ -762,15 +791,30 @@ class MultiDDataTransformer(DataCubeProcessing):
         Either `min_area` or `image_reduction` should be specified to perform clipping.
         """
         # clip either by a given minum area threshold or using a image reduciton factor
-        if min_area is not None:
-            current_area = get_xarray_polygon(self.xrdata).area
-            if current_area> min_area:
-                self._clip_cubedata_image(min_area = min_area,update_data=True)
-        if image_reduction is not None and image_reduction>0:
-            current_area = get_xarray_polygon(self.xrdata).area
-            reduced_area = current_area * (1-image_reduction)
-            self._clip_cubedata_image(min_area = reduced_area,update_data=True)
+        start0 = time.time()
+        current_area = get_xarray_polygon(self.xrdata).area
+        end0 = time.time()
         
+        if min_area is not None:
+            if current_area> min_area:
+                start1 = time.time()
+                self._clip_cubedata_image(min_area = min_area,update_data=True, report_times = report_times)
+                current_area = min_area
+                end1 = time.time()
+            else:
+                start1, end1 = 0,0
+            
+        if image_reduction is not None and image_reduction>0:
+            start2 = time.time()
+            reduced_area = current_area * (1-image_reduction)
+            self._clip_cubedata_image(min_area = reduced_area,update_data=True, report_times = report_times)
+            end2 = time.time()
+            
+        if report_times:
+            print('finding xarraypolygon values time {:.4f}'.format(end0 - start0))
+            print('clip process1 time {:.4f}'.format(end1 - start1))
+            print('clip process2 time {:.3f}'.format(end2 - start2))
+            
     
     def create_new_features(self, rgb_for_color_space: List[str] = ['red', 'green', 'ms']) -> None:
         """
