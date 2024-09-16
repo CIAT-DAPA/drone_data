@@ -4,12 +4,17 @@ import random
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 import numpy as np
-from utils import data_processing
+import pandas as pd
 
+import xarray
+from .data_processing import from_xarray_to_table
+from .data_processing import assign_valuestoimg
 
 def pca_transform(data,
                   variancemin=0.5,
-                  export_pca=False):
+                  export_pca=False,
+                  sample = 'all',
+                  seed = 123):
     """
 
     :param data: numpy array
@@ -17,18 +22,24 @@ def pca_transform(data,
     :param export_pca: boolean
     :return: dictionary
     """
+    if sample == "all":
+        datatotrain = data
+    elif sample < data.shape[0]:
+        random.seed(seed)
+        random_indices = random.sample(range(data.shape[0]), sample)
+        datatotrain = data[random_indices]
 
     pca = PCA()
-    pca.fit_transform(data)
+    pca.fit_transform(datatotrain)
     # define the number of components through
     ncomponets = np.max(np.argwhere((pca.explained_variance_ * 100) > variancemin)) + 1
 
-    print("calculating pca with {} components".format(ncomponets))
+    #print("calculating pca with {} components".format(ncomponets))
     # calculate new pca
-    pca = PCA(n_components=ncomponets).fit(data)
-    scaleddata = pca.transform(data)
+    pca = PCA(n_components=ncomponets).fit(datatotrain)
+    data = pca.transform(data)
     # export data
-    output = {'pca_transformed': scaleddata}
+    output = {'pca_transformed': data}
 
     if export_pca:
         output['pca_model'] = pca
@@ -36,13 +47,15 @@ def pca_transform(data,
     return output
 
 
-def kmeans_images(data, nclusters,
+def kmeans_images(data, 
+                  nclusters,
                   scale="minmax",
                   nrndsample="all",
                   seed=123,
                   pca=True,
                   export_pca=False,
-                  eigmin=0.3):
+                  eigmin=0.3,
+                  verbose = False):
     """
 
     :param data:
@@ -59,22 +72,26 @@ def kmeans_images(data, nclusters,
         scaler = MinMaxScaler().fit(data)
 
     scaleddata = scaler.transform(data)
-    print("scale done!")
+    if verbose:
+        print("scale done!")
+
     if pca:
-        pcaresults = pca_transform(scaleddata, eigmin, export_pca)
+        pcaresults = pca_transform(scaleddata, eigmin, export_pca, nrndsample)
         scaleddata = pcaresults['pca_transformed']
 
     if nrndsample == "all":
         datatotrain = scaleddata
     elif nrndsample < scaleddata.shape[0]:
-
         random.seed(seed)
         random_indices = random.sample(range(scaleddata.shape[0]), nrndsample)
         datatotrain = scaleddata[random_indices]
 
-    print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
-                                                          datatotrain.shape[1]))
-    kmeansclusters = KMeans(n_clusters=nclusters).fit(datatotrain)
+    if verbose:
+        print("kmeans training using a {} x {} matrix".format(datatotrain.shape[0],
+                                                              datatotrain.shape[1]))
+
+    kmeansclusters = KMeans(n_clusters=nclusters,
+                            random_state=seed).fit(datatotrain)
     clusters = kmeansclusters.predict(scaleddata)
     output = {
         'labels': clusters,
@@ -92,7 +109,7 @@ def img_rf_classification(xrdata, model, ml_features):
     idvarsmodel = [list(xrdata.keys()).index(i) for i in ml_features]
 
     if len(idvarsmodel) == len(ml_features):
-        npdata, idsnan = data_processing.from_xarray_to_table(xrdata,
+        npdata, idsnan = from_xarray_to_table(xrdata,
                                                               nodataval=xrdata.attrs['nodata'],
                                                               features_names=ml_features)
 
@@ -103,6 +120,105 @@ def img_rf_classification(xrdata, model, ml_features):
         height = xrdata.dims['y']
         width = xrdata.dims['x']
 
-        return data_processing.assign_valuestoimg(ml_predicition,
+        return assign_valuestoimg(ml_predicition,
                                                   height,
                                                   width, idsnan)
+
+
+
+def cluster_3dxarray(xrdata, cluster_dict):
+
+    listnames = list(xrdata.keys())
+    listdims = list(xrdata.dims.keys())
+
+    npdata2dclean, idsnan = from_xarray_to_table(xrdata, 
+                                                 nodataval= xrdata.attrs['nodata'])
+    
+    npdata2dclean = pd.DataFrame(npdata2dclean, columns = listnames)
+    
+    if 'scale_model' in list(cluster_dict.keys()):
+        npdata2dclean = cluster_dict['scale_model'].transform(npdata2dclean)
+    if 'pca_model' in list(cluster_dict.keys()):
+        npdata2dclean = cluster_dict['pca_model'].transform(npdata2dclean)
+
+    dataimage = cluster_dict['kmeans_model'].predict(npdata2dclean)
+    xrsingle = xarray.DataArray(
+            assign_valuestoimg(dataimage+1, xrdata.dims[listdims[0]],
+                                            xrdata.dims[listdims[1]], 
+                                            idsnan))
+    xrsingle.name = 'cluster'
+    
+    return xrsingle
+
+
+
+
+def cluster_4dxarray(xrdata, 
+                     cl_dict,
+                     cluster_value = None, 
+                     only_thesedates = None,
+                     name4d = 'date'):
+    """
+    function to mask a xarray multitemporal data using a pretrained cluster algorithm
+
+    Parameters:
+    ----------
+    xarraydata: xarray
+        data that contains the multi-temporal imagery data
+    cl_dict: dict
+        dictionary with the cluster model
+    cluster_value: int
+        cluster index that will be used as mask
+    only_thesedates: list, optional
+        scefy the time index if only those dates will be masked
+
+    Return:
+    ---------
+    [an xarray filtered, the mask]
+        
+    """
+    
+    xrtobemasked = xrdata.copy()
+
+    dim1size = range(xrtobemasked.dims[name4d])
+
+    imgfilteredperdate = []
+    maskslist = []
+    tpmasked = []
+    
+    for i in dim1size:
+        xrsingle = xrtobemasked.isel({name4d : i}).copy()
+        
+        if only_thesedates is not None:
+            if i in only_thesedates:
+            
+                xrclusterlayer = cluster_3dxarray(
+                    xrsingle[cl_dict['variable_names']].copy(), cl_dict)
+                
+                xrsingle = xrsingle.where(
+                    xrclusterlayer.values != cluster_value,np.nan)
+                maskslist.append(xrclusterlayer)
+                tpmasked.append(i)
+            
+        else:
+            xrclusterlayer = cluster_3dxarray(
+                xrsingle[cl_dict['variable_names']].copy(), cl_dict)
+            
+            xrsingle = xrsingle.where(
+                xrclusterlayer.values != cluster_value,np.nan)
+            maskslist.append(xrclusterlayer)
+            tpmasked.append(i)
+              
+        imgfilteredperdate.append(xrsingle)
+    
+    if len(imgfilteredperdate)>0:
+        #name4d = list(xrdata.dims.keys())[0]
+
+        mltxarray = xarray.concat(imgfilteredperdate, dim=name4d)
+        mltxarray[name4d] = xrdata[name4d].values
+    
+    if len(maskslist)>0:
+        masksxr = xarray.concat(maskslist, dim=name4d)
+        masksxr[name4d] = xrdata[name4d].values[tpmasked]
+
+    return mltxarray, masksxr

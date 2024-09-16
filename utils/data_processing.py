@@ -1,11 +1,62 @@
-import numpy as np
-import rasterio.features
+
+
 import json
 from PIL import Image
 import os
+import re
+import random
+
+import numpy as np
+import pandas as pd
+
 from pathlib import Path
+import pandas as pd
+from dateutil.parser import parse
 
 
+#from sklearn import linear_model
+
+
+def is_date(string, fuzzy=False):
+    """
+    Return whether the string can be interpreted as a date.
+
+    :param string: str, string to check for date
+    :param fuzzy: bool, ignore unknown tokens in string if True
+    """
+    try: 
+        parse(string, fuzzy=fuzzy)
+        return True
+
+    except ValueError:
+        return False
+
+def find_date_instring(string, pattern = "202", yearformat = 'yyyy'):
+    """find date pattern in a string
+
+    Args:
+        string (_type_): string
+        pattern (str, optional): date init. Defaults to "202".
+        yearformat (str, optional): the year format in the string 2021 is yyyy. Defaults to 'yyyy'.
+
+    Returns:
+        string: date in yyyymmdd format
+    """
+    matches = re.finditer(pattern, string)
+    
+    if yearformat == 'yyyy':
+        datelen = 8
+    else:
+        datelen = 6
+    
+    matches_positions = [string[match.start():match.start() +datelen] 
+                                for match in matches if is_date(string[match.start():match.start() +datelen])]
+    if len(matches_positions[0]) == 6:
+        matches_positions = ['20'+matches_positions[0]]
+    
+    return matches_positions[0]
+
+    
 def assign_valuestoimg(data, height, width, na_indexes=None):
     ids_notnan = np.arange(height *
                            width)
@@ -14,7 +65,8 @@ def assign_valuestoimg(data, height, width, na_indexes=None):
                      width, dtype='f')
 
     if na_indexes is not None:
-        ids_notnan = np.delete(ids_notnan, na_indexes, axis=0)
+        if len(na_indexes)>0:
+            ids_notnan = np.delete(ids_notnan, na_indexes, axis=0)
 
     climg[list(ids_notnan)] = data
     #
@@ -22,6 +74,7 @@ def assign_valuestoimg(data, height, width, na_indexes=None):
 
 
 def mask_usingGeometry(shp, xr_data):
+    import rasterio.features
     ## converto to json
     jsonshpdict = shp.to_json()
     jsonshp = [feature["geometry"]
@@ -69,11 +122,37 @@ def get_maskmltoptions(dataarray, conditions_list):
 
     return boolean_list
 
+def minmax_scale(data, minval = None, maxval = None):
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
+
+
+def data_standarization(values, meanval = None, stdval = None):
+    if meanval is None:
+        meanval = np.nanmean(values)
+    if stdval is None:
+        stdval = np.nanstd(values)
+    
+    return (values - meanval)/stdval
+
 
 def scaleminmax(values):
     return ((values - np.nanmin(values)) /
             (np.nanmax(values) - np.nanmin(values)))
 
+
+
+def data_normalization(data, minval = None, maxval = None):
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
 
 def scalestd(values):
     return ((values - (np.nanmean(values) - np.nanstd(values) * 2)) /
@@ -102,20 +181,37 @@ def get_nan_idsfromarray(nparray):
     return np.unique(ids)
 
 
-def from_xarray_2array(xrdata, bands):
+def from_xarray_2array(xrdata, bands, normalize = False):
     data_list = []
     for i in bands:
         banddata = xrdata[i].data
         banddata[banddata == xrdata.attrs['nodata']] = np.nan
+        if normalize:
+            banddata = (banddata *255)/ np.nanmax(banddata)
+
         data_list.append(banddata)
 
     return np.array(data_list)
+
+def from_xarray_2list(xrdata, bands, normalize = False):
+    data_list = []
+    for i in bands:
+        banddata = xrdata[i].data
+        banddata[banddata == xrdata.attrs['nodata']] = np.nan
+        if normalize:
+            banddata = (banddata *255)/ np.nanmax(banddata)
+
+        data_list.append(banddata)
+
+    return data_list
 
 
 def from_xarray_2_rgbimage(xarraydata,
                            bands=None,
                            export_as_jpg=False,
-                           ouputpath=None):
+                           ouputpath=None, 
+                           normalize = True,
+                           newsize = None, verbose = False):
 
 
     if ouputpath is None:
@@ -127,12 +223,15 @@ def from_xarray_2_rgbimage(xarraydata,
     if bands is None:
         bands = np.array(list(xarraydata.keys()))[0:3]
 
-    data_tile = from_xarray_2array(xarraydata, bands)
+    data_tile = from_xarray_2array(xarraydata, bands, normalize)
 
     if data_tile.shape[0] == 3:
         data_tile = np.moveaxis(data_tile, 0, -1)
 
     image = Image.fromarray(data_tile.astype(np.uint8), 'RGB')
+    if newsize is not None:
+        image = image.resize(newsize)
+
     if export_as_jpg:
         Path(directory).mkdir(parents=True, exist_ok=True)
 
@@ -140,8 +239,8 @@ def from_xarray_2_rgbimage(xarraydata,
             ouputpath = ouputpath + ".jpg"
 
         image.save(ouputpath)
-
-        print("Image saved: {}".format(ouputpath))
+        if verbose:
+            print("Image saved: {}".format(ouputpath))
 
     return image
 
@@ -164,9 +263,12 @@ def from_xarray_to_table(xrdata, nodataval=None,
                             npdata.shape[1] * npdata.shape[2])
 
     idsnan = get_nan_idsfromarray(npdata)
-    if remove_nan:
-        npdata = np.delete(npdata.T, idsnan, axis=0)
 
+    if remove_nan:
+        if len(idsnan)>0:
+            npdata = np.delete(npdata.T, idsnan, axis=0)
+        else:
+            npdata = npdata.T
     return [npdata, idsnan]
 
 
@@ -194,3 +296,147 @@ def resize_3dnparray( array,new_size=512):
                 resimg.append(np.hstack([tmp, np.zeros([new_size, (new_size-array.shape[2])])]))
 
     return np.array(resimg)
+
+def summary_xrbyquantiles(xrdata, quantiles = [.25,0.5,0.75], idcolum = 'date'):
+
+    df = xrdata.to_dataframe()
+    df = df.groupby(idcolum).quantile(quantiles)
+    if 'spatial_ref' in df.columns:
+        df = df.drop('spatial_ref',axis = 1)
+    df = df.reset_index()
+
+    df['idt'] = 0
+    df['id'] = df[idcolum].astype(str) + '_' + df['level_1'].astype(str)
+    
+    dflist = []
+    for i in list(xrdata.keys()):
+        dftemp = df.pivot(index='idt', columns='id', values=i).reset_index()
+        dftemp = dftemp.drop(['idt'], axis = 1)
+
+        dftemp.columns = i + '_d_' + dftemp.columns
+        dflist.append(dftemp)
+
+    return pd.concat(dflist, axis=1)
+    
+def get_vi_ts(df, npattern = ['ndvi']):
+
+    tsdata = df.copy()
+    for i in npattern:
+        tsdata = tsdata.filter(regex=i)
+
+    return np.expand_dims(tsdata.values,2)
+"""
+
+def get_linear_coefficients_fromtwoarrays(data, reference, verbose = True):
+    
+    dffit = pd.DataFrame({
+        'x':data,
+        'y':reference
+    }).dropna()
+
+    regr = linear_model.LinearRegression()
+    regr.fit(np.expand_dims(dffit.x.values, axis = 1),
+            np.expand_dims(dffit.y.values, axis = 1))
+    if verbose:
+        print("{} + X * {}".format(np.squeeze(regr.intercept_), np.squeeze(regr.coef_)))
+
+    return np.squeeze(regr.intercept_), np.squeeze(regr.coef_)
+"""
+
+class FolderWithImages(object):
+    @property
+    def files_in_folder(self):
+        
+        return self._look_for_images()
+    
+    def __init__(self, path,suffix = '.jpg', shuffle = False, seed = None) -> None:
+        
+        self.path = path
+        self.imgs_suffix = suffix
+        self.shuffle = shuffle
+        self.seed = seed
+    
+    def _look_for_images(self):
+        filesinfolder = [i for i in os.listdir(self.path) if i.endswith(self.imgs_suffix)]
+        if len(filesinfolder)==0:
+            raise ValueError(f'there are not images in this {self.path} folder')
+
+        if self.seed is not None and self.shuffle:
+            random.seed(self.seed)
+            random.shuffle(filesinfolder)
+
+        elif self.shuffle:
+            random.shuffle(filesinfolder)
+
+        return filesinfolder
+    
+
+def from_long_towide(data, indexname, values_columnname, metrics_colname):
+
+    widephenomycs = []
+    for name in np.unique(data[metrics_colname].values):
+
+        ssdata = data.loc[data[metrics_colname] == name]
+        ssdatawide = ssdata.copy().reset_index()
+        ssdatawide['idx'] = ssdatawide.groupby([indexname]).cumcount()
+        ssdatawide['idx'] = np.unique(ssdatawide.metric.values) + '_t' + ssdatawide.idx.astype(str)
+        
+        widephenomycs.append(ssdatawide.pivot(
+        index=indexname,columns='idx',values=values_columnname).reset_index())
+    
+    dfconcatenated = widephenomycs[0]
+    for i in range(1,len(widephenomycs)):
+        dfconcatenated = pd.merge(dfconcatenated,widephenomycs[i], how="left", on=[indexname])
+
+    return dfconcatenated.reset_index()
+
+
+def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 'standarization'):
+    
+    if varchanels is None:
+        varchanels = list(range(len(values)))
+    if scalertype == 'standarization':
+        if scaler is None:
+            scaler = {chan:[np.nanmean(values[i]),
+                            np.nanstd(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_standarization
+    elif scalertype == 'normalization':
+        if scaler is None:
+            scaler = {chan:[np.nanmin(values[i]),
+                            np.nanmax(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_normalization
+    
+    else:
+        raise ValueError('{} is not an available option')
+    
+    valueschan = {}
+    for i, channel in enumerate(varchanels):
+        if channel in list(scaler.keys()):
+            val1, val2 = scaler[channel]
+            scaleddata = fun(values[i], val1, val2)
+            valueschan[channel] = scaleddata
+    
+    return valueschan    
+
+
+def customdict_transformation(customdict, scaler, scalertype = 'standarization'):
+    """scale customdict
+
+    Args:
+        customdict (dict): custom dict
+        scaler (dict): dictionary that contains the scalar values per channel. 
+                       e.g. for example to normalize the red channel you will provide min and max values {'red': [1,255]}  
+        scalertype (str, optional): string to mention if 'standarization' or 'normalization' is gonna be applied. Defaults to 'standarization'.
+
+    Returns:
+        xrarray: xrarraytransformed
+    """
+
+    varchanels = list(customdict['variables'].keys())
+    values =[customdict['variables'][i] for i in varchanels]
+    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    for chan in list(trvalues.keys()):
+        customdict['variables'][chan] = trvalues[chan]
+        
+    return customdict
+

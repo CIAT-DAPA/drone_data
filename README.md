@@ -1,53 +1,21 @@
 
-## Procesar imágenes de drones
+# Crop Monitoring Using Drone Data
 
-Este repositorio se creó con la intención de facilitar el procesamiento de imágenes de drones, con la intención de crear fácilmente índices vegetales y mapas de coberturas, a partir de bandas espectrales tomadas por drones.
-A continuación se muestra un ejemplo de su uso y de algunas funciones disponibles hasta el momento.
+Welcome to our repository dedicated to advanced crop monitoring using drone-acquired data. This project leverages the power of UAV technology to provide insightful agricultural data. Our toolkit includes a range of features tailored for precision agriculture 🌱, designed to enhance crop management and yield optimization.
 
-Lo primero es señalar la carpeta en donde se encuentran ubicadas las imágenes de drones.
-De  igual forma, se debe indicar el bnombre de las bandas a leer. *Actualmente, solo se puede leer una imágen for fecha.*
+## 🛠️ Key Features
 
-La función drone_data.DroneData, almacena la información en una matriz de tres dimensiones, x * y * banda.
+This repository is made to dispose of several drone-based tools for crop monitoring. Currently, there are available examples for:
 
-```python
-from utils import drone_data
-from utils import plt_functions
-import numpy as np
+* UAV Orthomosaic Clipping 🗺️: Generate subset of orthomosaic images using spatial boundaries.
+* Spectral Indices Calculation 📊: Calculate various spectral indices for assessing plant health. This tool supports indices like NDVI, NDRE, and more, offering a deep insight into crop vitality.
+* 3D Visualization 🌐: Transform your data into interactive 3D models. Visualize crop height.
+* Plant detection given with YOLOv5🌿: Deploy a pre-trained YOLO (You Only Look Once) model for accurate plant detection. 
+* Cluster classification 🔍: Apply advanced clustering algorithms for segmenting crops based on various criteria, facilitating targeted interventions and analysis.
 
-m = drone_data.DroneData("images/", ## directorio donde se encuentran las imágenes
-                         bands=['blue', 'green', 'red', 'r_edge', 'nir'] ## nombre de las bandas de las imagenes
-                         )
-```
-### Añadir indices vegetales
+## 📈 Multi-temporal Analysis Framework
 
-Con la función *.calculate_vi*, se pueden realizar distintas operaciones entre bandas, como defecto se encuentra las bandas ndvi y ndvire.
-``
-<br>
-$$ndvi = \frac{nir - red}{red + nir}$$
-<br>
-$$ndvire = \frac{nir - rededge}{rededge + nir}$$
+Our framework is designed for efficient handling of crop monitoring data across different growth stages. It features:
 
-También es posible agregar otros tipo de indices vegetales, expresando la función, ejemplo: "(nir-green)/(nir + green)"
-```python
-
-### Calculando indices vegetales
-m.calculate_vi('ndvi')
-m.calculate_vi('ndvire')
-```
-
-La función *plotsingleband()*, permite mostrar una banda almacenada en el cubo de datos.
-```python
-m.plot_singleband('ndvi')
-
-```
-De igual forma se cuenta con la función *plot_multiplebands* para poder crear mapas combinando distintas bandas.
-
-```python
-m.plot_multiplebands(['red', 'green', 'blue'])
-
-```
-<p align="center">
-
-<img src="rm_imgs\multiband.png" alt="rgbimage" id="logo" data-height-percentage="90" data-actual-width="140" data-actual-height="55">
-
-</p>
+* Structured Data Storage 💾: We employ a multi-dimensional approach to data organization. Our framework combines spatial (X, Y), temporal (time), and spectral (spectral band) dimensions into an integrated xarray object. This structure facilitates easy access and manipulation of complex datasets.
+* Time-Series Analysis ⏳: Track and analyze changes in crop health and growth over time. Our time dimension allows for seamless comparison of data across different dates.
